@@ -2,7 +2,7 @@
 
 ## [LIDIA: Lightweight Learned Image Denoising with Instance Adaptation](https://github.com/grishavak/LIDIA-denoiser)
 
-Chong Mou, [Jian Zhang](https://jianzhang.tech/), Zhuoyuan Wu; Dynamic Attentive Graph Learning for Image Restoration; IEEE International Conference on Computer Vision (ICCV) 2021 [\[arxiv\]](https://arxiv.org/abs/2109.06620)  
+Gregory Vaksman, Michael Elad, Peyman Milanfar
 
 ## Installation
 
