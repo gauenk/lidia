@@ -3,7 +3,7 @@ from torch.nn.functional import fold
 import torch.nn as nn
 import torch.nn.functional as nn_func
 from torch.nn.functional import conv2d
-from utils import *
+from .utils import *
 
 
 class ArchitectureOptions:
@@ -329,7 +329,9 @@ class NonLocalDenoiser(nn.Module):
 
         return top_dist, top_ind
 
-    def denoise_image(self, image_n, train, save_memory, max_batch):
+    def denoise_image(self, image_n, train, save_memory=True, max_batch=40000):
+
+        import torch as th
 
         patch_numel = (self.patch_w ** 2) * image_n.shape[1]
 
@@ -453,11 +455,18 @@ class NonLocalDenoiser(nn.Module):
 
         return image
 
-    def forward(self, image_n, train=True, save_memory=False, max_chunk=None):
+    def forward(self, image_n, train=True, save_memory=False, max_chunk=None,
+                normalize=False):
+        if normalize:
+            image_n = (image_n/255. - 0.5)/0.5
+
         image_n_mean = image_n.mean(dim=(-2, -1), keepdim=True)
         image_n = image_n - image_n_mean
         image_dn = self.denoise_image(image_n, train, save_memory, max_chunk)
         image_dn = image_dn + image_n_mean
+
+        if normalize:
+            image_dn = 255.*(image_dn*0.5 + 0.5)
 
         return image_dn
 

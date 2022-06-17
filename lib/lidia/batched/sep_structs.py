@@ -79,12 +79,16 @@ class SeparablePart2(nn.Module):
 
 
 class SeparableFcNet(nn.Module):
-    def __init__(self, arch_opt, patch_w, ver_size, grad_sep_part1):
+    def __init__(self, arch_opt, patch_w, ver_size, grad_sep_part1, match_bn):
         super(SeparableFcNet, self).__init__()
         patch_numel = (patch_w ** 2) * 3 if arch_opt.rgb else patch_w ** 2
 
         # -- grad parameters --
         self.grad_sep_part1 = grad_sep_part1
+
+        # -- matching batch normalization --
+        self.match_bn = match_bn
+        self.nframes = -1
 
         # -- sep nets [0 & 1] --
         self.sep_part1_s0 = SeparablePart1(arch_opt=arch_opt, hor_size=14,
@@ -133,6 +137,7 @@ class SeparableFcNet(nn.Module):
         x_out = self.sep_part1_s0(wpatches)
         if self.grad_sep_part1: x_out = x_out.detach()
         y_out = self.agg0.batched_fwd_b(vid,qindex,bsize,unfold)
+        y_out = self.reshape_bn(y_out)
         y_out = self.agg0_post(y_out)
         return y_out,x_out
 
@@ -151,6 +156,7 @@ class SeparableFcNet(nn.Module):
         x_out = self.sep_part1_s1(wpatches)
         if self.grad_sep_part1: x_out = x_out.detach()
         y_out = self.agg1.batched_fwd_b(vid,qindex,bsize,unfold)
+        y_out = self.reshape_bn(y_out)
         if wdiv: y_out = weights * y_out
         y_out = self.agg1_post(y_out)
         return y_out,x_out
@@ -177,4 +183,11 @@ class SeparableFcNet(nn.Module):
 
     def forward(self):
         raise NotImplemented("")
+
+    def reshape_bn(self,data):
+        if not self.match_bn: return data
+        shape = list(data.shape)
+        shape[0] = self.nframes
+        shape[1] = shape[1]//self.nframes
+        return data.view(shape)
 

@@ -35,7 +35,7 @@ class PatchDenoiseNet(nn.Module):
         # -- combo --
         self.beta = nn.Parameter(th.tensor((0.5,), dtype=th.float32))
 
-    def forward(self,patches_n0,dist0,inds0,params0,patches_n1,dist1,inds1,params1):
+    def forward(self,patches_n0,dists0,inds0,params0,patches_n1,dists1,inds1,params1):
         """
         Run patch denoiser network
         """
@@ -44,23 +44,23 @@ class PatchDenoiseNet(nn.Module):
         # -- Sep @ 0 --
         #
 
-        weights0 = self.weights_net0(th.exp(-self.alpha0.abs() * dist0))
+        weights0 = self.weights_net0(th.exp(-self.alpha0.abs() * dists0))
         weights0 = weights0.unsqueeze(-1)
         wpatches0 = patches_n0 * weights0
         h,w = params0['pixels_h'],params0['pixels_w']
-        agg0,sep0,_ = self.sep_net.run_sep0(wpatches0,dist0,inds0,h,w)
+        agg0,sep0,_ = self.sep_net.run_sep0(wpatches0,dists0,inds0,h,w)
         self.print_gpu_stats("Sep0")
 
         #
         # -- Sep @ 1 --
         #
 
-        weights1 = self.weights_net1(th.exp(-self.alpha1.abs() * dist1))
+        weights1 = self.weights_net1(th.exp(-self.alpha1.abs() * dists1))
         weights1 = weights1.unsqueeze(-1)
         wpatches1 = patches_n1 * weights1
         weights1 = weights1[:, :, 0:1, :]
         h,w = params1['pixels_h'],params1['pixels_w']
-        agg1,sep1,_ = self.sep_net.run_sep1(wpatches1,weights1,dist1,inds1,h,w)
+        agg1,sep1,_ = self.sep_net.run_sep1(wpatches1,weights1,dists1,inds1,h,w)
         assert th.any(th.isnan(agg1)).item() is False
         self.print_gpu_stats("Sep1")
 

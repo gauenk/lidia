@@ -17,20 +17,19 @@ import dnls
 # -- separate logic --
 from . import adapt
 from . import nn_impl
+from . import nn_impl_orig
 
 # -- utils --
-from n4net.utils import clean_code
+from lidia.utils import clean_code
 
 # -- misc imports --
 from .misc import crop_offset
 
-
 @clean_code.add_methods_from(adapt)
-@clean_code.add_methods_from(nn_impl)
-class LIDIA(nn.Module):
+class BaseLIDIA(nn.Module):
 
     def __init__(self, pad_offs, arch_opt, gpu_stats=False):
-        super(LIDIA, self).__init__()
+        super(BaseLIDIA, self).__init__()
         self.arch_opt = arch_opt
         self.pad_offs = pad_offs
         self.gpu_stats = gpu_stats
@@ -251,6 +250,23 @@ class LIDIA(nn.Module):
 
     def run_nn1(self):
         raise NotImplemented("")
+
+
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+#
+#        Derivative Classes
+#
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+@clean_code.add_methods_from(nn_impl)
+class LIDIA(BaseLIDIA):
+    def __init__(self, pad_offs, arch_opt, gpu_stats=False):
+        super(LIDIA, self).__init__(pad_offs, arch_opt, gpu_stats)
+
+@clean_code.add_methods_from(nn_impl_orig)
+class OriginalLIDIA(BaseLIDIA):
+    def __init__(self, pad_offs, arch_opt, gpu_stats=False):
+        super(OriginalLIDIA, self).__init__(pad_offs, arch_opt, gpu_stats)
 
 class ArchitectureOptions:
     def __init__(self, rgb):

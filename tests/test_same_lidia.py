@@ -29,14 +29,15 @@ import data_hub
 
 # -- package imports [to test] --
 import dnls # supporting
-import n4net
-from n4net.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
+import lidia
+from lidia.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
+from torchvision.transforms.functional import center_crop
 
 # -- package imports [to test] --
 import lidia
-from lidia.model_io import get_lidia_model as get_lidia_model_ntire
-from lidia.nl_model_io import get_lidia_model as get_lidia_model_nl
-from lidia.data import save_burst
+# from lidia.model_io import get_lidia_model as get_lidia_model_ntire
+# from lidia.nl_model_io import get_lidia_model as get_lidia_model_nl
+# from lidia.data import save_burst
 
 # -- check if reordered --
 from scipy import optimize
@@ -52,12 +53,55 @@ def set_seed(seed):
 
 #
 #
-# -- Test original LIDIA v.s. modular (n4net) LIDIA --
+# -- Test original LIDIA v.s. modular (lidia) LIDIA --
 #
 #
 
 # @pytest.mark.skip()
-def test_same_lidia():
+def test_same_original_refactored():
+
+    # -- params --
+    sigma = 50.
+    device = "cuda:0"
+    ps = 5
+    vid_set = "toy"
+    vid_name = "text_tourbus"
+    # vid_set = "set8"
+    # vid_name = "motorbike"
+
+    # -- video --
+    vid_cfg = data_hub.get_video_cfg(vid_set,vid_name)
+    clean = data_hub.load_video(vid_cfg)[:3,:,:96,:128]
+    clean = th.from_numpy(clean).contiguous().to(device)
+
+    # -- set seed --
+    seed = 123
+    # set_seed(seed)
+
+    # -- over training --
+    for train in [False,True]:
+
+        # -- get data --
+        noisy = clean + sigma * th.randn_like(clean)
+        im_shape = noisy.shape
+
+        # -- lidia exec --
+        lidia_model = lidia.original.load_model(sigma)
+        with th.no_grad():
+            deno_lid = lidia_model(noisy,train=train,normalize=True).detach()
+
+        # -- lidia exec --
+        n4_model = lidia.refactored.load_model(sigma,"original")
+        with th.no_grad():
+            deno_ref = n4_model(noisy,sigma,train=train).detach()
+
+        # -- test --
+        error = th.sum((deno_lid - deno_ref)**2).item()
+        print("error: ",error)
+        assert error < 1e-15
+
+# @pytest.mark.skip()
+def test_same_refactored_batched():
 
     # -- params --
     sigma = 50.
@@ -78,32 +122,39 @@ def test_same_lidia():
     set_seed(seed)
 
     # -- over training --
-    for train in [True,False]:
+    for train in [False,True]:
 
         # -- get data --
         noisy = clean + sigma * th.randn_like(clean)
         im_shape = noisy.shape
 
         # -- lidia exec --
-        lidia_model = get_lidia_model_nl(device,im_shape,sigma)
-        deno_steps = lidia_model.run_parts(noisy,sigma,train=train)
-        deno_steps = deno_steps.detach()
+        lidia_model = lidia.batched.load_model(sigma,lidia_pad=True,
+                                               match_bn=True)
+        with th.no_grad():
+            deno_lid = lidia_model(noisy,sigma,train=train).detach()
 
-        # -- n4net exec --
-        n4_model = n4net.lidia.load_model(sigma)
-        deno_n4 = n4_model(noisy,sigma,train=train)
-        deno_n4 = deno_n4.detach()
+        # -- lidia exec --
+        n4_model = lidia.refactored.load_model(sigma)
+        with th.no_grad():
+            deno_ref = n4_model(noisy,sigma,train=train).detach()
+
+        # -- viz --
+        # diff = th.abs(deno_lid - deno_ref)
+        # diff /= diff.max()
+        # lidia.testing.data.save_burst(diff,"./output/tests/","diff")
 
         # -- test --
-        error = th.sum((deno_n4 - deno_steps)**2).item()
-        assert error < 1e-10
+        error = th.sum((deno_lid - deno_ref)**2).item()
+        assert error < 1e-4
+
 #
 #
-# -- Test modular (n4net) LIDIA [same as og] v.s. diffy (n4net) LIDIA --
+# -- Test modular (lidia) LIDIA [same as og] v.s. diffy (lidia) LIDIA --
 #
 #
 
-# @pytest.mark.skip()
+@pytest.mark.skip()
 def test_batched():
 
     # -- params --
@@ -140,8 +191,8 @@ def test_batched():
         im_shape = noisy.shape
         noisy = noisy.contiguous()
 
-        # -- n4net exec --
-        n4_model = n4net.lidia.load_model(sigma).to(device)
+        # -- lidia exec --
+        n4_model = lidia.lidia.load_model(sigma).to(device)
         deno_steps = n4_model(noisy,sigma,train=train)
         print_gpu_stats(gpu_stats,"post-Step")
         # with th.no_grad():
@@ -152,8 +203,8 @@ def test_batched():
         print_gpu_stats(gpu_stats,"post-Step.")
         print_peak_gpu_stats(gpu_stats,"post-Step.")
 
-        # -- n4net exec --
-        n4b_model = n4net.batched_lidia.load_model(sigma).to(device)
+        # -- lidia exec --
+        n4b_model = lidia.batched_lidia.load_model(sigma).to(device)
         deno_n4 = n4b_model(noisy,sigma,train=train,batch_size=batch_size)
         print_gpu_stats(gpu_stats,"post-Batched.")
         print_peak_gpu_stats(gpu_stats,"post-Batched.")
@@ -196,7 +247,7 @@ def test_batched():
 #
 #
 
-# @pytest.mark.skip()
+@pytest.mark.skip()
 def test_internal_adapt():
 
     # -- params --
@@ -226,18 +277,18 @@ def test_internal_adapt():
     im_shape = noisy.shape
     noisy = noisy.contiguous()
 
-    # -- n4net exec --
+    # -- lidia original exec --
     set_seed(seed)
-    n4_model = n4net.lidia.load_model(sigma).to(device)
+    n4_model = lidia.lidia.load_model(sigma).to(device)
     n4_model.run_internal_adapt(noisy,sigma,nsteps=10,nepochs=1)
     deno_n4 = n4_model(noisy,sigma)
     # with th.no_grad():
     #     deno_n4 = n4_model(noisy,sigma)
     deno_n4 = deno_n4.detach()/255.
 
-    # -- n4net exec --
+    # -- lidia batched exec --
     set_seed(seed)
-    n4b_model = n4net.batched_lidia.load_model(sigma).to(device)
+    n4b_model = lidia.batched_lidia.load_model(sigma).to(device)
     n4b_model.run_internal_adapt(noisy,sigma,nsteps=10,nepochs=1)
     deno_n4b = n4b_model(noisy,sigma)
     # with th.no_grad():

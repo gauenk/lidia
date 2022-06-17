@@ -1,11 +1,10 @@
 import gc
 import sys
 import math
-from data_modules import *
+from .data_modules import *
 import torch
 import torch.optim as optim
 import torch.nn as nn
-
 
 def sigma_255_to_torch(sigma_255):
     return (sigma_255 / 255) / 0.5

@@ -1,6 +1,7 @@
 
 # -- misc --
 import sys,os,copy
+from pathlib import Path
 
 # -- torch --
 import torch as th
@@ -14,7 +15,7 @@ from .lidia_structs import BatchedLIDIA,ArchitectureOptions
 # -- misc imports --
 from .misc import get_default_config,calc_padding,select_sigma
 
-def load_model(sigma,lidia_pad=False):
+def load_model(sigma,lidia_pad=False,match_bn=False):
 
     # -- get cfg --
     cfg = get_default_config(sigma)
@@ -22,16 +23,19 @@ def load_model(sigma,lidia_pad=False):
 
     # -- init model --
     pad_offs, total_pad = calc_padding()#arch_cfg)
-    nl_denoiser = BatchedLIDIA(pad_offs, arch_cfg, lidia_pad=lidia_pad).to(cfg.device)
+    nl_denoiser = BatchedLIDIA(pad_offs, arch_cfg,
+                               lidia_pad = lidia_pad,
+                               match_bn = match_bn).to(cfg.device)
     nl_denoiser.cuda()
 
     # -- load weights --
     lidia_sigma = select_sigma(sigma)
-    state_fn0 = '/home/gauenk/Documents/packages/lidia/lidia-deno/models/model_state_sigma_{}_c.pt'.format(lidia_sigma)
-    assert os.path.isfile(state_fn0)
-    model_state0 = th.load(state_fn0)
-    modded_dict(model_state0['state_dict'])
-    nl_denoiser.pdn.load_state_dict(model_state0['state_dict'])
+    fdir = Path(__file__).absolute().parents[0] / "../../../"
+    state_fn = fdir / "models/model_state_sigma_{}_c.pt".format(lidia_sigma)
+    assert os.path.isfile(str(state_fn))
+    model_state = th.load(str(state_fn))
+    modded_dict(model_state['state_dict'])
+    nl_denoiser.pdn.load_state_dict(model_state['state_dict'])
 
     return nl_denoiser
 

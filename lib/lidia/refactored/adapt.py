@@ -9,7 +9,7 @@ from .misc import get_default_config,crop_offset
 
 # -- data structs --
 import torch.utils.data as data
-from n4net.utils.adapt_data import ImagePairDataSet
+from lidia.utils.adapt_data import ImagePairDataSet
 
 # -- linalg --
 import torch as th
@@ -20,7 +20,7 @@ from einops import repeat,rearrange
 from pathlib import Path
 
 # -- separate class and logic --
-from n4net.utils import clean_code
+from lidia.utils import clean_code
 __methods__ = [] # self is a DataStore
 register_method = clean_code.register_method(__methods__)
 

@@ -12,10 +12,10 @@ from .sep_structs import SeparableFcNet,FcNet
 
 # -- checking --
 from .misc import assert_nonan
-from n4net.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
+from lidia.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
 
 class PatchDenoiseNet(nn.Module):
-    def __init__(self, arch_opt, patch_w, ver_size, gpu_stats, grad_sep_part1):
+    def __init__(self, arch_opt, patch_w, ver_size, gpu_stats, grad_sep_part1, match_bn):
         super(PatchDenoiseNet, self).__init__()
 
         # -- options --
@@ -23,11 +23,16 @@ class PatchDenoiseNet(nn.Module):
         self.gpu_stats = gpu_stats
         self.grad_sep_part1 = grad_sep_part1
 
+        # -- matching batch normalization --
+        self.match_bn = match_bn
+        self.nframes = -1
+
         # -- sep filters --
         self.sep_net = SeparableFcNet(arch_opt=arch_opt,
                                       patch_w=patch_w,
                                       ver_size=ver_size,
-                                      grad_sep_part1=grad_sep_part1)
+                                      grad_sep_part1=grad_sep_part1,
+                                      match_bn=match_bn)
         # -- sep 0 --
         self.weights_net0 = FcNet("fc0")
         self.alpha0 = nn.Parameter(th.tensor((0.5,), dtype=th.float32))
@@ -62,13 +67,15 @@ class PatchDenoiseNet(nn.Module):
         dists = nn_info.dists
         wdiv = params.wdiv
 
+        # -- optional step --
+        dists = self.reshape_bn(dists)
+        patches = self.reshape_bn(patches)
+
         # -- forward --
         weights = wnet(th.exp(-alpha.abs() * dists)).unsqueeze(-1)
         wpatches = patches * weights
         weights = weights[:, :, 0:1, :]
         vid,x_out = sep_net(wpatches,weights,qindex,pfxns,wdiv)
-        # vid,x_out = self.sep_net.run_batched_sep1_a(wpatches,weights,inds,
-        #                                              fold,wfold,wdiv)
         return vid,x_out
 
     def batched_fwd_b(self,levels,nn_info,pfxns,qindex,bsize):
@@ -79,10 +86,10 @@ class PatchDenoiseNet(nn.Module):
         sep_nets = {"l0":self.sep_net.run_batched_sep0_b,
                     "l1":self.sep_net.run_batched_sep1_b}
 
-
         # -- iter each level --
         grouped_sep,grouped_agg = [],[]
-        for level in nn_info.keys():
+        ordered = ["l0","l1"]
+        for level in ordered:
 
             # -- unpack --
             alpha = alphas[level]
@@ -93,6 +100,10 @@ class PatchDenoiseNet(nn.Module):
             vid = levels[level].vid
             wdiv = levels[level].wdiv
             unfold = pfxns[level].unfold
+
+            # -- matching batch normalization --
+            dists = self.reshape_bn(dists)
+            patches = self.reshape_bn(patches)
 
             # -- run --
             weights = wnet(th.exp(-alpha.abs() * dists))
@@ -123,10 +134,21 @@ class PatchDenoiseNet(nn.Module):
         # -- gpu info --
         self.print_gpu_stats("post-PDN(b)")
 
+        # -- matching batch normalization --
+        patches_n0 = self.reshape_bn(patches_n0)
+
+        # -- final sep step --
         noise = self.sep_net.sep_part2(inputs)
         deno,patches_w = self.run_batched_pdn_final(patches_n0,noise)
 
         return deno,patches_w
+
+    def reshape_bn(self,data):
+        if not self.match_bn: return data
+        shape = list(data.shape)
+        shape[0] = self.nframes
+        shape[1] = shape[1]//self.nframes
+        return data.view(shape)
 
     def run_batched_pdn_final(self,patches_n0,noise):
         patches_dn = patches_n0[:, :, 0, :] - noise.squeeze(-2)

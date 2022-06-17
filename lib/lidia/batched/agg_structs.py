@@ -20,7 +20,7 @@ class Aggregation0(nn.Module):
 
         # -- prepare x --
         pt,ps,t = 1,self.patch_w,patches.shape[0]
-        patches = rearrange(patches,'1 n 1 (c h w) -> n 1 1 c h w',h=ps,w=ps)
+        patches = rearrange(patches,'t n 1 (c h w) -> (t n) 1 1 c h w',h=ps,w=ps)
 
         # -- exec fold --
         ones = th.ones_like(patches)
@@ -58,7 +58,7 @@ class Aggregation1(nn.Module):
         pt,ps,t = 1,self.patch_w,patches.shape[0]
 
         # -- prepare patches --
-        patches = rearrange(patches,'1 n 1 (c h w) -> n 1 1 c h w',h=ps,w=ps)
+        patches = rearrange(patches,'t n 1 (c h w) -> (t n) 1 1 c h w',h=ps,w=ps)
 
         # -- fold --
         ones = th.ones_like(patches)

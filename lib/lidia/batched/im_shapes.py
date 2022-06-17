@@ -11,12 +11,12 @@ from torch.nn.functional import pad as nn_pad
 import dnls
 
 # -- separate class and logic --
-from n4net.utils import clean_code
+from lidia.utils import clean_code
 __methods__ = [] # self is a DataStore
 register_method = clean_code.register_method(__methods__)
 
 # -- helper imports --
-from n4net.utils.inds import get_3d_inds
+from lidia.utils.inds import get_3d_inds
 from .misc import get_image_params,crop_offset
 
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-

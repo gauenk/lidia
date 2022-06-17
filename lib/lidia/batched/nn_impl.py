@@ -10,12 +10,12 @@ from easydict import EasyDict as edict
 import dnls
 
 # -- separate class and logic --
-from n4net.utils import clean_code
+from lidia.utils import clean_code
 __methods__ = [] # self is a DataStore
 register_method = clean_code.register_method(__methods__)
 
 # -- helper imports --
-from n4net.utils.inds import get_3d_inds
+from lidia.utils.inds import get_3d_inds
 from .misc import get_image_params,get_npatches
 
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -81,7 +81,6 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
 
     # -- indexing patches --
     t,c,h,w = image_n0.shape
-    # patches = dnls.simple.scatter.run(image_n0,nlInds,self.patch_w)
     patches = scatter_nl(image_n0,nlInds)
     ishape = 'p k 1 c h w -> 1 p k (c h w)'
     patches = rearrange(patches,ishape)

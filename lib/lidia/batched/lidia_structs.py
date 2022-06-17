@@ -25,12 +25,12 @@ from . import nn_impl
 from . import im_shapes
 
 # -- utils --
-from n4net.utils import clean_code
+from lidia.utils import clean_code
 
 # -- misc imports --
 from .misc import calc_padding
 from .misc import crop_offset,get_npatches,get_step_fxns,assert_nonan
-from n4net.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
+from lidia.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
 
 @clean_code.add_methods_from(adapt)
 @clean_code.add_methods_from(im_shapes)
@@ -38,13 +38,14 @@ from n4net.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
 class BatchedLIDIA(nn.Module):
 
     def __init__(self, pad_offs, arch_opt, lidia_pad=False,
-                 grad_sep_part1=True,verbose=False):
+                 match_bn=False,grad_sep_part1=True,verbose=False):
         super(BatchedLIDIA, self).__init__()
         self.arch_opt = arch_opt
         self.pad_offs = pad_offs
 
         # -- modify changes --
         self.lidia_pad = lidia_pad
+        self.match_bn = match_bn
         self.grad_sep_part1 = grad_sep_part1
         self.gpu_stats = False
         self.verbose = verbose
@@ -71,6 +72,7 @@ class BatchedLIDIA(nn.Module):
         self.pdn = PatchDenoiseNet(arch_opt=arch_opt,patch_w=self.patch_w,
                                    ver_size=self.ver_size,
                                    gpu_stats=self.gpu_stats,
+                                   match_bn=self.match_bn,
                                    grad_sep_part1=self.grad_sep_part1)
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -87,9 +89,11 @@ class BatchedLIDIA(nn.Module):
 
         """
 
+        # -=-=-=-=-=-=-=-=-=-=-=-
         #
-        # -- Prepare --
+        # --     Prepare       --
         #
+        # -=-=-=-=-=-=-=-=-=-=-=-
 
         # -- normalize for input ---
         self.print_gpu_stats("Init")
@@ -106,6 +110,10 @@ class BatchedLIDIA(nn.Module):
         t,c,h,w = noisy.shape
         ps,pt = self.patch_w,1
 
+        # -- assign for match_bn check --
+        self.pdn.nframes = noisy.shape[0]
+        self.pdn.sep_net.nframes = noisy.shape[0]
+
         # -- get num of patches --
         hp,wp = get_npatches(vshape, train, self.ps, self.pad_offs, self.k)
 
@@ -117,7 +125,6 @@ class BatchedLIDIA(nn.Module):
             h_l,w_l,pad_l = self.image_shape((hp,wp),ps,dilation=dil,train=train)
             coords_l = [pad_l,pad_l,hp+pad_l,wp+pad_l]
             vshape_l = (t,c,h_l,w_l)
-            # print(f"{lname}: ",coords_l,vshape_l,h_l,w_l,pad_l)
             pfxns[lname] = get_step_fxns(vshape_l,coords_l,ps,stride,dil,device)
 
         # -- allocate final video  --
@@ -125,17 +132,16 @@ class BatchedLIDIA(nn.Module):
         self.print_gpu_stats("Alloc")
 
 
+        # -=-=-=-=-=-=-=-=-=-=-=-
         #
-        # -- First Processing --
+        # --    First Step     --
         #
+        # -=-=-=-=-=-=-=-=-=-=-=-
 
         # -- Batching Info --
         if self.verbose: print("batch_size: ",batch_size)
         nqueries = t * ((hp-1)//stride+1) * ((wp-1)//stride+1)
         if batch_size <= 0: batch_size = nqueries
-        # batch_size = 128
-        # batch_size = nqueries//4
-        # batch_size = nqueries//2
         nbatches = (nqueries - 1)//batch_size+1
 
         for batch in range(nbatches):
@@ -143,6 +149,7 @@ class BatchedLIDIA(nn.Module):
             # -- Info --
             if self.verbose:
                 print("[Step0] Batch %d/%d" % (batch+1,nbatches))
+
             # -- Batching Inds --
             qindex = min(batch * batch_size,nqueries)
             batch_size_i = min(batch_size,nqueries - qindex)
@@ -151,18 +158,22 @@ class BatchedLIDIA(nn.Module):
             # -- Process Each Level --
             for level in levels:
                 pfxns_l,params_l = pfxns[level],levels[level]
+
                 # -- Non-Local Search --
                 nn_info = params_l.nn_fxn(noisy,queries,pfxns_l.scatter,
                                           srch_img,flows,train,ws=ws,wt=wt)
+
                 # -- Patch-based Denoising --
                 self.pdn.batched_step(nn_info,pfxns_l,params_l,level,qindex)
 
             # -- [testing] num zeros --
             wvid = pfxns[level].wfold.vid
 
+        # -=-=-=-=-=-=-=-=-=-=-=-
         #
         # -- Normalize Videos --
         #
+        # -=-=-=-=-=-=-=-=-=-=-=-
 
         for level in levels:
             vid = pfxns[level].fold.vid
@@ -172,7 +183,12 @@ class BatchedLIDIA(nn.Module):
             levels[level]['vid'] = vid_z
             del wvid
 
-        # -- second step --
+        # -=-=-=-=-=-=-=-=-=-=-=-
+        #
+        # --    Second Step    --
+        #
+        # -=-=-=-=-=-=-=-=-=-=-=-
+
         for batch in range(nbatches):
 
             # -- Info --
@@ -216,9 +232,11 @@ class BatchedLIDIA(nn.Module):
             self.run_parts_final(pdeno,wpatches,qindex,
                                  deno_folds.img,deno_folds.wimg)
 
+        # -=-=-=-=-=-=-=-=-=-=-=-
         #
-        # -- Final Format --
+        # --    Final Format    --
         #
+        # -=-=-=-=-=-=-=-=-=-=-=-
 
         # -- Unpack --
         deno = self.final_format(deno_folds.img,deno_folds.wimg)
@@ -233,9 +251,6 @@ class BatchedLIDIA(nn.Module):
         return deno
 
     def allocate_final(self,t,c,hp,wp):
-        # t,c,h,w = ishape
-        # pad = self.ps//2
-        # hp,wp = h+2*pad,w+2*pad
         coords = [0,0,hp,wp]
         folds = edict()
         folds.img = dnls.ifold.iFold((t,c,hp,wp),coords,stride=1,dilation=1)
