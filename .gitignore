@@ -1,3 +1,5 @@
+.cache_io
+output
 build/*
 cmake/*
 data/*

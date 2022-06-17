@@ -59,11 +59,14 @@ class BaseLIDIA(nn.Module):
     #
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-    def forward(self, noisy, sigma, srch_img=None, srch_flows=None,
-                ws=29, wt=0, rescale=True, train=False):
+    def forward(self, noisy, sigma, srch_img=None, flows=None,
+                ws=29, wt=0, rescale=True, train=False,
+                batch_size=None, batch_alpha = None):
         """
 
         Primary Network Backbone
+
+        "batch_size,batch_alpha" only included to match api call
 
         """
 
@@ -83,14 +86,14 @@ class BaseLIDIA(nn.Module):
         #
 
         # -- [nn0 search]  --
-        output0 = self.run_nn0(noisy,srch_img,srch_flows,train,ws=ws,wt=wt)
+        output0 = self.run_nn0(noisy,srch_img,flows,train,ws=ws,wt=wt)
         patches0 = output0[0]
         dists0 = output0[1]
         inds0 = output0[2]
         params0 = output0[3]
 
         # -- [nn1 search]  --
-        output1 = self.run_nn1(noisy,srch_img,srch_flows,train,ws=ws,wt=wt)
+        output1 = self.run_nn1(noisy,srch_img,flows,train,ws=ws,wt=wt)
         patches1 = output1[0]
         dists1 = output1[1]
         inds1 = output1[2]

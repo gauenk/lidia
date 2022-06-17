@@ -43,13 +43,6 @@ def run_model(cfg,model,noisy,flows,batch_size):
     with th.no_grad():
         deno = model(noisy,cfg.sigma,flows=flows,
                      ws=cfg.ws,wt=cfg.wt,batch_size=batch_size)
-        # if cfg.mtype == "original":
-        #     deno = model(noisy,cfg.sigma,flows=flows,
-        #                  ws=cfg.ws,wt=cfg.wt,batch_size=batch_size)
-        # elif cfg.mtype == "refactored":
-        #     deno = model.run_parts(noisy,cfg.sigma,train=False)
-        # else:
-        #     raise ValueError(f"Uknown mtype [{mtype}]")
     deno = deno.detach()
     return deno
 
@@ -81,7 +74,7 @@ def run_exp(cfg):
 
     # -- modded isize --
     h,w = noisy.shape[-2:]
-    msize = cfg.mod_isize
+    msize = cfg.res
     min_edge = min(h,w)
     if msize < min_edge:
         rem = int(min_edge - msize)
@@ -107,8 +100,6 @@ def run_exp(cfg):
     # -- size --
     nframes = noisy.shape[0]
     npix_f = np.prod(list(noisy.shape[-2:]))
-    # ngroups = int(25 * 37./nframes)
-    # batch_size = ngroups*1024
     npix = nframes * npix_f
     if cfg.batch_perc > .999:
         batch_size = -1
@@ -207,50 +198,59 @@ def main():
     nframes = [1]
     comp_flow = ["false"]
 
-    mod_isizes = [96,128,256,300,385,400,425,500,700,1000,2000]
-    # mod_isizes = ["96_96","128_128","256_256","300_300","385_385","400_400","425_425","500_500"]
-
+    # -- sets of exps --
     mtype = ["batched"]
     batch_perc = [1.,0.9,0.8]
-    mod_isizes = [96,128,256,300,385,400,425,500]
+    res = [96,128,256,300,385,400,425,500]
     exp_lists = {"dname":dnames,"vid_name":vid_names,"sigma":sigmas,
                  "internal_adapt_nsteps":internal_adapt_nsteps,
                  "internal_adapt_nepochs":internal_adapt_nepochs,
                  "comp_flow":comp_flow,"ws":ws,"wt":wt,
-                 "mtype":mtype,"mod_isize":mod_isizes,"nframes":nframes,
+                 "mtype":mtype,"res":res,"nframes":nframes,
                  "batch_perc":batch_perc}
     exps = cache_io.mesh_pydicts(exp_lists) # create mesh
 
     mtype = ["batched"]
-    batch_perc = [0.7,0.65,0.40,0.25]
-    mod_isizes = [500,700,1000]
+    batch_perc = [0.65,0.60,0.55,0.5,0.45,0.4]
+    res = [500,700]
     exp_lists = {"dname":dnames,"vid_name":vid_names,"sigma":sigmas,
                  "internal_adapt_nsteps":internal_adapt_nsteps,
                  "internal_adapt_nepochs":internal_adapt_nepochs,
                  "comp_flow":comp_flow,"ws":ws,"wt":wt,
-                 "mtype":mtype,"mod_isize":mod_isizes,"nframes":nframes,
+                 "mtype":mtype,"res":res,"nframes":nframes,
+                 "batch_perc":batch_perc}
+    exps += cache_io.mesh_pydicts(exp_lists) # create mesh
+
+    mtype = ["batched"]
+    batch_perc = [0.40,0.35,0.30,0.25]
+    res = [1000]
+    exp_lists = {"dname":dnames,"vid_name":vid_names,"sigma":sigmas,
+                 "internal_adapt_nsteps":internal_adapt_nsteps,
+                 "internal_adapt_nepochs":internal_adapt_nepochs,
+                 "comp_flow":comp_flow,"ws":ws,"wt":wt,
+                 "mtype":mtype,"res":res,"nframes":nframes,
                  "batch_perc":batch_perc}
     exps += cache_io.mesh_pydicts(exp_lists) # create mesh
 
     mtype = ["batched"]
     batch_perc = [0.25,0.2,0.15,0.1]
-    mod_isizes = [2000]
+    res = [2000]
     exp_lists = {"dname":dnames,"vid_name":vid_names,"sigma":sigmas,
                  "internal_adapt_nsteps":internal_adapt_nsteps,
                  "internal_adapt_nepochs":internal_adapt_nepochs,
                  "comp_flow":comp_flow,"ws":ws,"wt":wt,
-                 "mtype":mtype,"mod_isize":mod_isizes,"nframes":nframes,
+                 "mtype":mtype,"res":res,"nframes":nframes,
                  "batch_perc":batch_perc}
     exps += cache_io.mesh_pydicts(exp_lists) # create mesh
 
     mtype = ["original"]
     batch_perc = [1.]
-    mod_isizes = [96,128,256,300,385,400,425]
+    res = [96,128,256,300,385,400,425]
     exp_lists = {"dname":dnames,"vid_name":vid_names,"sigma":sigmas,
                  "internal_adapt_nsteps":internal_adapt_nsteps,
                  "internal_adapt_nepochs":internal_adapt_nepochs,
                  "comp_flow":comp_flow,"ws":ws,"wt":wt,
-                 "mtype":mtype,"mod_isize":mod_isizes,"nframes":nframes,
+                 "mtype":mtype,"res":res,"nframes":nframes,
                  "batch_perc":batch_perc}
     exps += cache_io.mesh_pydicts(exp_lists) # create mesh
 
@@ -261,8 +261,8 @@ def main():
             exp.internal_adapt_nepochs = 2
 
     # -- group with default --
-    cfg = default_cfg()
-    cache_io.append_configs(exps,cfg) # merge the two
+    base_cfg = default_cfg()
+    cache_io.append_configs(exps,base_cfg) # merge the two
 
     # -- run exps --
     nexps = len(exps)
@@ -277,7 +277,8 @@ def main():
 
         # -- logic --
         uuid = cache.get_uuid(exp) # assing ID to each Dict in Meshgrid
-        # cache.clear_exp(uuid)
+        # if exp.mtype == "original":
+        #     cache.clear_exp(uuid)
         results = cache.load_exp(exp) # possibly load result
         if results is None: # check if no result
             exp.uuid = uuid
@@ -294,7 +295,7 @@ def main():
         print("--- Mtype [%s] ---" % mtype)
         for fail_id,fdf in mdf.groupby("failed"):
             print("--- Failed Id [%d] ---" % fail_id)
-            print(fdf[['mod_isize','batch_perc','timer_deno']])
+            print(fdf[['res','batch_perc','timer_deno']])
 
     # -- create stat plots --
     lidia.plots.show_stats.create_stat_plots(records)

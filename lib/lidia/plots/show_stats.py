@@ -12,6 +12,11 @@ import matplotlib
 matplotlib.use("agg")
 import matplotlib.pyplot as plt
 
+# -- save --
+from pathlib import Path
+SAVE_DIR = Path("./output/plots/show_stats")
+if not SAVE_DIR.exists():
+    SAVE_DIR.mkdir(parents=True)
 
 def create_stat_plots(records):
 
@@ -23,7 +28,7 @@ def create_stat_plots(records):
     # -- get max non-failing batch size --
     print(bdf)
     bdf_l = []
-    for res,rdf in bdf.groupby("mod_isize"):
+    for res,rdf in bdf.groupby("res"):
         max_batch_perc = rdf['batch_perc'].max()
         bdf_m = rdf[rdf['batch_perc'] == max_batch_perc]
         bdf_l.append(bdf_m)
@@ -31,11 +36,7 @@ def create_stat_plots(records):
     print(bdf)
 
     # -- order fields --
-    fields = ['mod_isize',"res",'batch_perc','timer_deno']
-    ldf['res'] = ldf['mod_isize']
-    bdf['res'] = bdf['mod_isize']
-    # ldf['res'] = [int(isize.split("_")[0]) for isize in ldf['mod_isize']]
-    # bdf['res'] = [int(isize.split("_")[0]) for isize in bdf['isize']]
+    fields = ["res",'batch_perc','timer_deno']
     ldf = ldf.sort_values("res")
     bdf = bdf.sort_values("res")
     print(ldf[fields])
@@ -83,7 +84,8 @@ def plot_res_v_bs(ldf,bdf):
 
     # -- save --
     ax.legend(fontsize=FSIZE_S,title_fontsize=FSIZE,title="Method")
-    plt.savefig("show_stats_res_v_bs.png",bbox_inches="tight",dpi=300)
+    fname = SAVE_DIR / "show_stats_res_v_bs.png"
+    plt.savefig(fname,bbox_inches="tight",dpi=300)
 
     # -- close --
     plt.cla()
@@ -134,7 +136,8 @@ def plot_res_v_runtime(ldf,bdf):
 
     # -- save --
     ax.legend(fontsize=FSIZE_S,title_fontsize=FSIZE,title="Method")
-    plt.savefig("show_stats_res_v_runtime.png",bbox_inches="tight",dpi=300)
+    fname = SAVE_DIR / "show_stats_res_v_runtime.png"
+    plt.savefig(fname,bbox_inches="tight",dpi=300)
 
     # -- close --
     plt.cla()

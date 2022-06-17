@@ -82,7 +82,8 @@ class BatchedLIDIA(nn.Module):
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
     def forward(self, noisy, sigma, srch_img=None, flows=None,
-                ws=29, wt=0, train=False, rescale=True, stride=1, batch_size = -1):
+                ws=29, wt=0, train=False, rescale=True, stride=1,
+                batch_size = -1, batch_alpha = 0.5):
         """
 
         Primary Network Backbone
@@ -189,6 +190,12 @@ class BatchedLIDIA(nn.Module):
         #
         # -=-=-=-=-=-=-=-=-=-=-=-
 
+        # -- shrink batch size since all patches at once --
+        if batch_size > 0:
+            batch_size = int(batch_alpha * batch_size)
+        nbatches = (nqueries - 1)//batch_size+1
+
+        # -- for each batch --
         for batch in range(nbatches):
 
             # -- Info --
