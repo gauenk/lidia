@@ -8,4 +8,4 @@ from . import original
 from . import refactored
 from . import batched
 from . import testing
-
+from . import plots
