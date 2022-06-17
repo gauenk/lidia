@@ -68,6 +68,7 @@ def test_same_original_refactored():
     vid_name = "text_tourbus"
     # vid_set = "set8"
     # vid_name = "motorbike"
+    verbose = False
 
     # -- video --
     vid_cfg = data_hub.get_video_cfg(vid_set,vid_name)
@@ -97,7 +98,7 @@ def test_same_original_refactored():
 
         # -- test --
         error = th.sum((deno_lid - deno_ref)**2).item()
-        print("error: ",error)
+        if verbose: print("error: ",error)
         assert error < 1e-15
 
 # @pytest.mark.skip()
@@ -154,7 +155,7 @@ def test_same_refactored_batched():
 #
 #
 
-@pytest.mark.skip()
+# @pytest.mark.skip()
 def test_batched():
 
     # -- params --
@@ -166,7 +167,7 @@ def test_batched():
     vid_set = "toy"
     vid_name = "text_tourbus"
     gpu_stats = False
-    verbose = True
+    verbose = False
     batch_size = 1024
     th.cuda.set_device(0)
 
@@ -192,7 +193,7 @@ def test_batched():
         noisy = noisy.contiguous()
 
         # -- lidia exec --
-        n4_model = lidia.lidia.load_model(sigma).to(device)
+        n4_model = lidia.refactored.load_model(sigma).to(device)
         deno_steps = n4_model(noisy,sigma,train=train)
         print_gpu_stats(gpu_stats,"post-Step")
         # with th.no_grad():
@@ -204,7 +205,7 @@ def test_batched():
         print_peak_gpu_stats(gpu_stats,"post-Step.")
 
         # -- lidia exec --
-        n4b_model = lidia.batched_lidia.load_model(sigma).to(device)
+        n4b_model = lidia.batched.load_model(sigma).to(device)
         deno_n4 = n4b_model(noisy,sigma,train=train,batch_size=batch_size)
         print_gpu_stats(gpu_stats,"post-Batched.")
         print_peak_gpu_stats(gpu_stats,"post-Batched.")
@@ -232,7 +233,7 @@ def test_batched():
             else:
                 tol = 1e-3 # batch effects
         if verbose:
-            print("Tain: ",train)
+            print("Train: ",train)
             print("Error: ",error)
             print("Tol: ",tol)
         assert error < tol # allow for batch-norm artifacts
@@ -247,7 +248,7 @@ def test_batched():
 #
 #
 
-@pytest.mark.skip()
+# @pytest.mark.skip()
 def test_internal_adapt():
 
     # -- params --
@@ -279,7 +280,7 @@ def test_internal_adapt():
 
     # -- lidia original exec --
     set_seed(seed)
-    n4_model = lidia.lidia.load_model(sigma).to(device)
+    n4_model = lidia.refactored.load_model(sigma).to(device)
     n4_model.run_internal_adapt(noisy,sigma,nsteps=10,nepochs=1)
     deno_n4 = n4_model(noisy,sigma)
     # with th.no_grad():
@@ -288,7 +289,7 @@ def test_internal_adapt():
 
     # -- lidia batched exec --
     set_seed(seed)
-    n4b_model = lidia.batched_lidia.load_model(sigma).to(device)
+    n4b_model = lidia.batched.load_model(sigma).to(device)
     n4b_model.run_internal_adapt(noisy,sigma,nsteps=10,nepochs=1)
     deno_n4b = n4b_model(noisy,sigma)
     # with th.no_grad():
