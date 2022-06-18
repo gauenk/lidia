@@ -33,7 +33,7 @@ register_method = clean_code.register_method(__methods__)
 
 @register_method
 def run_internal_adapt(self,_noisy,sigma,srch_img=None,flows=None,ws=29,wt=0,
-                       nsteps=100, nepochs=5, verbose=False):
+                       nsteps=100, nepochs=5, noise_sim = None, verbose=False):
     noisy = (_noisy/255. - 0.5)/0.5
     verbose = False
     opt = get_default_config(sigma)
@@ -69,7 +69,7 @@ def run_external_adapt(self,_clean,sigma,srch_img=None,flows=None,ws=29,wt=0,
     else: _srch_img = clean
 
     # -- eval before --
-    noisy = add_noise_to_image(clean, opt.sigma)
+    noisy = add_noise_to_image(clean, noise_sim, opt.sigma)
     eval_nl(self,noisy,clean,_srch_img,flows,opt.sigma,verbose)
 
     for astep in range(nadapts):
@@ -78,7 +78,8 @@ def run_external_adapt(self,_clean,sigma,srch_img=None,flows=None,ws=29,wt=0,
                                  nsteps=nsteps,nepochs=nepochs,verbose=verbose)
 
 def adapt_step(nl_denoiser, clean, srch_img, flows, opt, total_pad,
-               ws=29, wt=0, nsteps=100, nepochs=5, verbose=False):
+               ws=29, wt=0, nsteps=100, nepochs=5,
+               noise_sim=None, verbose=False):
 
     # -- optims --
     criterion = th.nn.MSELoss(reduction='mean')
@@ -89,7 +90,7 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt, total_pad,
     loader,batch_last_it = get_adapt_dataset(clean,srch_img,opt,total_pad)
 
     # -- train --
-    noisy = add_noise_to_image(clean, opt.sigma)
+    noisy = add_noise_to_image(clean, noise_sim, opt.sigma)
 
     # -- epoch --
     for epoch in range(nepochs):
@@ -112,7 +113,7 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt, total_pad,
             # -- tenors on device --
             srch_i = srch_i.to(device=device).contiguous()
             clean_i = clean_i.to(device=device).contiguous()
-            noisy_i = clean_i + sigma_255_to_torch(opt.sigma) * th.randn_like(clean_i)
+            noisy_i = add_noise_to_image(clean_i,noise_sim,opt.sigma)
             noisy_i = noisy_i.contiguous()
 
             # -- forward pass --
@@ -187,8 +188,12 @@ def get_adapt_dataset(clean,srch_img,opt,total_pad):
     batch_last_it = dlen // dbs - 1
     return loader,batch_last_it
 
-def add_noise_to_image(clean, sigma):
-    noisy = clean + sigma_255_to_torch(sigma) * th.randn_like(clean)
+def add_noise_to_image(clean, noise_sim, sigma):
+    if noise_sim is None:
+        noisy = clean + sigma_255_to_torch(sigma) * th.randn_like(clean)
+    else:
+        with th.no_grad():
+            noisy = noise_sim(clean)
     return noisy
 
 def sigma_255_to_torch(sigma_255):
