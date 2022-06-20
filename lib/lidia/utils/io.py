@@ -7,7 +7,7 @@ from einops import rearrange
 from PIL import Image
 from pathlib import Path
 
-def save_burst(burst,root,name):
+def save_burst(burst,root,name,fstart=0):
 
     # -- path --
     root = Path(str(root))
@@ -20,8 +20,9 @@ def save_burst(burst,root,name):
     save_fns = []
     nframes = burst.shape[0]
     for t in range(nframes):
+        fid = t + fstart
         img_t = burst[t]
-        path_t = root / ("%s_%05d.png" % (name,t))
+        path_t = root / ("%s_%05d.png" % (name,fid))
         save_image(img_t,str(path_t))
         save_fns.append(str(path_t))
     return save_fns

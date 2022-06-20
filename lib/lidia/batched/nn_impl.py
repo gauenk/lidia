@@ -55,9 +55,9 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
     # -- get search image --
     if not(srch_img is None):
         img_nn0 = self.pad_crop0(image_n, self.pad_offs, train)
-        img_nn0 = self.rgb2gray(img_nn0)
+        img_nn0 = self.rgb2gray(img_nn0[:,:3])
     elif self.arch_opt.rgb:
-        img_nn0 = self.rgb2gray(image_n0)
+        img_nn0 = self.rgb2gray(image_n0[:,:3])
     else:
         img_nn0 = image_n0
     img_nn0 = img_nn0.detach()
@@ -68,6 +68,8 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
 
     # -- search --
     k,ps,pt,chnls = 14,self.patch_w,1,1
+    # nlDists,nlInds = dnls.search.run(img_nn0,queryInds,flows,
+    #                                  k,ps,pt,ws,wt,chnls)
     nlDists,nlInds = dnls.simple.search.run(img_nn0,queryInds,flows,
                                             k,ps,pt,ws,wt,chnls)
 
@@ -87,8 +89,9 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
 
     # -- append anchor patch spatial variance --
     d = patches.shape[-1]
-    nlDists[:,:-1] = nlDists[...,1:]
-    nlDists[:,-1] = patches[0,:,0,:].std(dim=-1).pow(2)*d # patch var
+    pvar0 = patches[0,:,0,:].std(-1)**2*d # patch var
+    nlDists = th.cat([nlDists[:,1:],pvar0[:,None]],-1)
+
 
     # -- remove padding --
     nlInds[...,1] -= sh
@@ -129,9 +132,9 @@ def run_nn1(self,image_n,queryInds,scatter_nl,
     # -- get search image --
     if not(srch_img is None):
         img_nn1 = self.prepare_image_n1(srch_img,train)
-        img_nn1 = self.rgb2gray(img_nn1)
+        img_nn1 = self.rgb2gray(img_nn1[:,:3])
     elif self.arch_opt.rgb:
-        img_nn1 = self.rgb2gray(image_n1)
+        img_nn1 = self.rgb2gray(image_n1[:,:3])
     else:
         img_nn1 = image_n1
     if detach_search:
@@ -147,9 +150,13 @@ def run_nn1(self,image_n,queryInds,scatter_nl,
 
     # -- exec search --
     k,pt,chnls = 14,1,1
+    # nlDists,nlInds = dnls.search.run(img_nn1,queryInds,flows,
+    #                                  k,ps,pt,ws,wt,chnls,
+    #                                  stride=2,dilation=2)
     nlDists,nlInds = dnls.simple.search.run(img_nn1,queryInds,flows,
                                             k,ps,pt,ws,wt,chnls,
                                             stride=2,dilation=2)
+
     # -- remove padding --
     queryInds[...,1] -= sh
     queryInds[...,2] -= sw
@@ -171,8 +178,8 @@ def run_nn1(self,image_n,queryInds,scatter_nl,
 
     # -- patch variance --
     d = patches.shape[-1]
-    nlDists[:,:-1] = nlDists[...,1:]
-    nlDists[:,-1] = patches[0,:,0,:].std(-1)**2*d # patch_var
+    pvar0 = patches[0,:,0,:].std(-1)**2*d # patch_var
+    nlDists = th.cat([nlDists[:,1:],pvar0[:,None]],-1)
 
     # -- centering inds --
     t,c,h1,w1 = image_n1.shape

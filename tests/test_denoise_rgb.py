@@ -50,6 +50,7 @@ def set_seed(seed):
     random.seed(seed)
     th.manual_seed(seed)
     np.random.seed(seed)
+    th.use_deterministic_algorithms(True)
 
 #
 #
@@ -57,7 +58,7 @@ def set_seed(seed):
 #
 #
 
-# @pytest.mark.skip()
+@pytest.mark.skip()
 def test_same_original_refactored():
 
     # -- params --
@@ -101,7 +102,7 @@ def test_same_original_refactored():
         if verbose: print("error: ",error)
         assert error < 1e-15
 
-# @pytest.mark.skip()
+@pytest.mark.skip()
 def test_same_refactored_batched():
 
     # -- params --
@@ -155,7 +156,7 @@ def test_same_refactored_batched():
 #
 #
 
-# @pytest.mark.skip()
+@pytest.mark.skip()
 def test_batched():
 
     # -- params --
@@ -244,11 +245,108 @@ def test_batched():
 
 #
 #
-# -- Test internal adaptations for LIDIA and BatchedLIDIA --
+# -- Test denoising on only inset region --
 #
 #
 
 # @pytest.mark.skip()
+def test_inset_deno():
+
+    # -- params --
+    sigma = 50.
+    device = "cuda:0"
+    ps = 5
+    # vid_set = "set8"
+    # vid_name = "motorbike"
+    vid_set = "toy"
+    vid_name = "text_tourbus"
+    gpu_stats = False
+    verbose = False
+    batch_size = -1#(128+4)*(128+4)#1024
+    remove_bn = False
+    th.cuda.set_device(0)
+
+    # -- set seed --
+    seed = 123
+    set_seed(seed)
+
+    # -- video --
+    vid_cfg = data_hub.get_video_cfg(vid_set,vid_name)
+    clean = data_hub.load_video(vid_cfg)[:3,:,:256,:256]
+    # clean = data_hub.load_video(vid_cfg)[:3,:,:96,:156]
+    # clean = data_hub.load_video(vid_cfg)[:3,:,:96,:96]
+    clean = th.from_numpy(clean).contiguous().to(device)
+
+    # -- inset region --
+    coords = [0,0,128,128]
+    # coords = [64,64,128,128]
+    def cslice(vid,coords):
+        t,l,b,r = coords
+        return vid[:,:,t:b,l:r]
+    csize = (128,128)
+
+    # -- gpu info --
+    print_peak_gpu_stats(gpu_stats,"Init.")
+
+    # -- over training --
+    for train in [False]:#,True]:
+
+        # -- get data --
+        noisy = clean + sigma * th.randn_like(clean)
+        im_shape = noisy.shape
+        noisy = noisy.contiguous()
+
+        # -- lidia exec --
+        b_model = lidia.batched.load_model(sigma,name="first").to(device)
+        deno_b = b_model(noisy.clone(),sigma,train=train,batch_size=batch_size)
+        print_gpu_stats(gpu_stats,"post-step")
+        deno_b = deno_b.detach()/255.
+        deno_b = cslice(deno_b,coords)
+        deno_b = center_crop(deno_b,csize)
+
+        # -- gpu info --
+        print_gpu_stats(gpu_stats,"post-step.")
+        print_peak_gpu_stats(gpu_stats,"post-step.")
+
+        # -- lidia exec --
+        n4b_model = lidia.batched.load_model(sigma,name="second").to(device)
+        deno_n4 = n4b_model(noisy.clone(),sigma,train=train,batch_size=batch_size)
+        #,coords=coords)
+        deno_n4 = deno_n4.detach()/255.
+        deno_n4 = cslice(deno_n4,coords)
+        deno_n4 = center_crop(deno_n4,csize)
+        print_gpu_stats(gpu_stats,"post-batched.")
+        print_peak_gpu_stats(gpu_stats,"post-batched.")
+
+        # -- save --
+        dnls.testing.data.save_burst(deno_n4,SAVE_DIR,"batched")
+        dnls.testing.data.save_burst(deno_b,SAVE_DIR,"ref")
+        diff = th.abs(deno_b - deno_n4)
+        dmax = diff.max().item()
+        diff /= diff.max()
+        dnls.testing.data.save_burst(diff,SAVE_DIR,"diff")
+
+        # -- test mse --
+        error = th.sum((deno_n4 - deno_b)**2).item()
+        print("L1-Max: ",dmax)
+        if verbose:
+            print("Train: ",train)
+            print("L1-Max: ",dmax)
+            print("Error: ",error)
+        assert error < 1e-10
+
+        # -- gpu info --
+        print_gpu_stats(gpu_stats,"final.")
+        print_peak_gpu_stats(gpu_stats,"final.")
+
+
+#
+#
+# -- Test internal adaptations for LIDIA and BatchedLIDIA --
+#
+#
+
+@pytest.mark.skip()
 def test_internal_adapt():
 
     # -- params --

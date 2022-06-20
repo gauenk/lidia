@@ -15,7 +15,8 @@ from .misc import assert_nonan
 from lidia.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
 
 class PatchDenoiseNet(nn.Module):
-    def __init__(self, arch_opt, patch_w, ver_size, gpu_stats, grad_sep_part1, match_bn):
+    def __init__(self, arch_opt, patch_w, ver_size, gpu_stats,
+                 grad_sep_part1, match_bn, remove_bn,name=""):
         super(PatchDenoiseNet, self).__init__()
 
         # -- options --
@@ -27,18 +28,23 @@ class PatchDenoiseNet(nn.Module):
         self.match_bn = match_bn
         self.nframes = -1
 
+        # -- removing batch normalization --
+        self.remove_bn = remove_bn
+
         # -- sep filters --
         self.sep_net = SeparableFcNet(arch_opt=arch_opt,
                                       patch_w=patch_w,
                                       ver_size=ver_size,
                                       grad_sep_part1=grad_sep_part1,
-                                      match_bn=match_bn)
+                                      match_bn=match_bn,
+                                      remove_bn=remove_bn,
+                                      name=name)
         # -- sep 0 --
-        self.weights_net0 = FcNet("fc0")
+        self.weights_net0 = FcNet("fc0",remove_bn)
         self.alpha0 = nn.Parameter(th.tensor((0.5,), dtype=th.float32))
 
         # -- sep 1 --
-        self.weights_net1 = FcNet("fc1")
+        self.weights_net1 = FcNet("fc1",remove_bn)
         self.alpha1 = nn.Parameter(th.tensor((0.5,), dtype=th.float32))
 
         # -- combo --

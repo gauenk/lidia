@@ -38,7 +38,8 @@ from lidia.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
 class BatchedLIDIA(nn.Module):
 
     def __init__(self, pad_offs, arch_opt, lidia_pad=False,
-                 match_bn=False,grad_sep_part1=True,verbose=False):
+                 match_bn=False,remove_bn=False,grad_sep_part1=True,
+                 name="",verbose=False):
         super(BatchedLIDIA, self).__init__()
         self.arch_opt = arch_opt
         self.pad_offs = pad_offs
@@ -46,8 +47,10 @@ class BatchedLIDIA(nn.Module):
         # -- modify changes --
         self.lidia_pad = lidia_pad
         self.match_bn = match_bn
+        self.remove_bn = remove_bn
         self.grad_sep_part1 = grad_sep_part1
         self.gpu_stats = False
+        self.name = name
         self.verbose = verbose
 
         self.patch_w = 5 if arch_opt.rgb else 7
@@ -73,7 +76,9 @@ class BatchedLIDIA(nn.Module):
                                    ver_size=self.ver_size,
                                    gpu_stats=self.gpu_stats,
                                    match_bn=self.match_bn,
-                                   grad_sep_part1=self.grad_sep_part1)
+                                   remove_bn=self.remove_bn,
+                                   grad_sep_part1=self.grad_sep_part1,
+                                   name=name)
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     #
@@ -83,7 +88,7 @@ class BatchedLIDIA(nn.Module):
 
     def forward(self, noisy, sigma, srch_img=None, flows=None,
                 ws=29, wt=0, train=False, rescale=True, stride=1,
-                batch_size = -1, batch_alpha = 0.5):
+                batch_size = -1, batch_alpha = 0.5, coords=None):
         """
 
         Primary Network Backbone
@@ -118,6 +123,20 @@ class BatchedLIDIA(nn.Module):
         # -- get num of patches --
         hp,wp = get_npatches(vshape, train, self.ps, self.pad_offs, self.k)
 
+        # -- get inset region --
+        if coords is None:
+            coords = [0,0,hp,wp]
+        else:
+            pad = 2*(self.ps//2)
+            coords_c = [i for i in coords]
+            coords_c[2] += pad
+            coords_c[3] += pad
+            coords = coords_c
+            hp = coords[2] - coords[0]
+            wp = coords[3] - coords[1]
+        print("hp,wp: ",hp,wp)
+        print("coords: ",coords)
+
         # -- patch-based functions --
         levels = self.get_levels()
         pfxns = edict()
@@ -142,20 +161,26 @@ class BatchedLIDIA(nn.Module):
         # -- Batching Info --
         if self.verbose: print("batch_size: ",batch_size)
         nqueries = t * ((hp-1)//stride+1) * ((wp-1)//stride+1)
-        if batch_size <= 0: batch_size = nqueries
-        nbatches = (nqueries - 1)//batch_size+1
+        print("nqueries,hp,wp: ",nqueries,hp,wp)
+        if batch_size <= 0: batch_size_step = nqueries
+        nbatches = (nqueries - 1)//batch_size_step+1
 
         for batch in range(nbatches):
 
             # -- Info --
+            print("[Step0] Batch %d/%d" % (batch+1,nbatches))
             if self.verbose:
                 print("[Step0] Batch %d/%d" % (batch+1,nbatches))
 
             # -- Batching Inds --
-            qindex = min(batch * batch_size,nqueries)
-            batch_size_i = min(batch_size,nqueries - qindex)
-            queries = dnls.utils.inds.get_query_batch(qindex,batch_size_i,
-                                                      stride,t,hp,wp,device)
+            qindex = min(batch * batch_size_step,nqueries)
+            batch_size_i = min(batch_size_step,nqueries - qindex)
+            # queries = dnls.utils.inds.get_query_batch(qindex,batch_size_i,
+            #                                            stride,t,hp,wp,device)
+            queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
+                                                       stride,coords,t,hp,wp,device)
+            th.cuda.synchronize()
+
             # -- Process Each Level --
             for level in levels:
                 pfxns_l,params_l = pfxns[level],levels[level]
@@ -166,9 +191,6 @@ class BatchedLIDIA(nn.Module):
 
                 # -- Patch-based Denoising --
                 self.pdn.batched_step(nn_info,pfxns_l,params_l,level,qindex)
-
-            # -- [testing] num zeros --
-            wvid = pfxns[level].wfold.vid
 
         # -=-=-=-=-=-=-=-=-=-=-=-
         #
@@ -191,9 +213,9 @@ class BatchedLIDIA(nn.Module):
         # -=-=-=-=-=-=-=-=-=-=-=-
 
         # -- shrink batch size since all patches at once --
-        if batch_size > 0:
-            batch_size = int(batch_alpha * batch_size)
-        nbatches = (nqueries - 1)//batch_size+1
+        if batch_size > 0: batch_size = int(batch_alpha * batch_size)
+        else: batch_size_step = nqueries
+        nbatches = (nqueries - 1)//batch_size_step+1
 
         # -- for each batch --
         for batch in range(nbatches):
@@ -206,10 +228,13 @@ class BatchedLIDIA(nn.Module):
             # -- Batching Inds --
             #
 
-            qindex = min(batch * batch_size,nqueries)
-            batch_size_i = min(batch_size,nqueries - qindex)
-            queries = dnls.utils.inds.get_query_batch(qindex,batch_size_i,
-                                                      stride,t,hp,wp,device)
+            qindex = min(batch * batch_size_step,nqueries)
+            batch_size_i = min(batch_size_step,nqueries - qindex)
+            # queries = dnls.utils.inds.get_query_batch(qindex,batch_size_i,
+            #                                           stride,t,hp,wp,device)
+            queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
+                                                       stride,coords,t,hp,wp,device)
+
 
             #
             # -- Non-Local Search @ Each Level --

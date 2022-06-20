@@ -12,9 +12,10 @@ import torch.nn.functional as nn_func
 import dnls
 
 class Aggregation0(nn.Module):
-    def __init__(self, patch_w):
+    def __init__(self, patch_w, name=""):
         super(Aggregation0, self).__init__()
         self.patch_w = patch_w
+        self.name = name
 
     def batched_fwd_a(self, patches, inds, fold_nl, wfold_nl):
 
@@ -30,8 +31,10 @@ class Aggregation0(nn.Module):
         return vid
 
     def batched_fwd_b(self, vid, qindex, bsize, unfold):
+        # -- main logic --
         y_out = unfold(vid,qindex,bsize)
         y_out = rearrange(y_out,'n 1 pt c h w -> 1 n 1 (pt c h w)')
+
         return y_out
 
     def forward(self):
@@ -40,9 +43,10 @@ class Aggregation0(nn.Module):
 
 class Aggregation1(nn.Module):
 
-    def __init__(self, patch_w):
+    def __init__(self, patch_w, name=""):
         super(Aggregation1, self).__init__()
         self.patch_w = patch_w
+        self.name = name
 
         kernel_1d = th.tensor((1 / 4, 1 / 2, 1 / 4), dtype=th.float32)
         kernel_2d = (kernel_1d.view(-1, 1) * kernel_1d).view(1, 1, 3, 3)
@@ -75,6 +79,7 @@ class Aggregation1(nn.Module):
         vid = self.bilinear_conv(vid).view(t,c,h,w)
         y_out = unfold(vid,qindex,bsize)
         y_out = rearrange(y_out,'n 1 pt c h w -> 1 n 1 (pt c h w)')
+
         return y_out
 
     def forward(self):

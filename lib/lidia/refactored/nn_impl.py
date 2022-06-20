@@ -84,15 +84,15 @@ def run_nn0(self,image_n,srch_img=None,flows=None,train=False,ws=29,wt=0):
 
     # -- append anchor patch spatial variance --
     d = patches.shape[-1]
-    patch_dist0 = nlDists[...,1:]
+    patch_dist = nlDists[...,1:]
     patch_var0 = patches[..., [0], :].std(dim=-1).pow(2)*d
-    patch_dist0 = th.cat((patch_dist0, patch_var0), dim=-1)
+    patch_dist = th.cat((patch_dist, patch_var0), dim=-1)
 
     # -- remove padding --
     nlInds[...,1] -= sh
     nlInds[...,2] -= sw
 
-    return patches,patch_dist0,nlInds,params
+    return patches,patch_dist,nlInds,params
 
 @register_method
 def run_nn1(self,image_n,srch_img=None,flows=None,train=False,ws=29,wt=0):
@@ -158,9 +158,9 @@ def run_nn1(self,image_n,srch_img=None,flows=None,train=False,ws=29,wt=0):
 
     # -- patch variance --
     d = patches.shape[-1]
-    patch_var = patches[...,0,:].std(-1)**2*d
-    nlDists[...,:-1] = nlDists[...,1:]
-    nlDists[...,-1] = patch_var
+    patch_dist = nlDists[...,1:]
+    patch_var0 = patches[..., [0], :].std(dim=-1).pow(2)*d
+    patch_dist = th.cat((patch_dist, patch_var0), dim=-1)
 
     # -- remove padding --
     t,c,h1,w1 = image_n1.shape
@@ -168,4 +168,4 @@ def run_nn1(self,image_n,srch_img=None,flows=None,train=False,ws=29,wt=0):
     nlInds[...,1] -= sh
     nlInds[...,2] -= sw
 
-    return patches,nlDists,nlInds,params
+    return patches,patch_dist,nlInds,params

@@ -11,14 +11,16 @@ from .bn_structs import VerHorBnRe,VerHorMat
 from .agg_structs import Aggregation0,Aggregation1
 
 class FcNet(nn.Module):
-    def __init__(self,name):
+    def __init__(self,name,remove_bn=False):
         super(FcNet, self).__init__()
         self.name = name
+        self.remove_bn = remove_bn
         for layer in range(6):
             self.add_module('fc{}'.format(layer), nn.Linear(in_features=14,
                                                             out_features=14,
                                                             bias=False))
-            self.add_module('bn{}'.format(layer), nn.BatchNorm1d(14))
+            if not(self.remove_bn):
+                self.add_module('bn{}'.format(layer), nn.BatchNorm1d(14))
             self.add_module('relu{}'.format(layer), nn.ReLU())
 
         self.add_module('fc_out', nn.Linear(in_features=14, out_features=14, bias=True))
@@ -33,15 +35,16 @@ class FcNet(nn.Module):
         return x
 
 class SeparablePart1(nn.Module):
-    def __init__(self, arch_opt, hor_size, patch_numel, ver_size,name=""):
+    def __init__(self, arch_opt, hor_size, patch_numel, ver_size, name="",
+                 remove_bn=False):
         super(SeparablePart1, self).__init__()
 
         self.ver_hor_bn_re0 = VerHorBnRe(ver_in=patch_numel, ver_out=ver_size,
                                          hor_in=14, hor_out=hor_size, bn=False)
         self.a = nn.Parameter(th.tensor((0,), dtype=th.float32))
         self.ver_hor_bn_re1 = VerHorBnRe(ver_in=ver_size, ver_out=ver_size,
-                                         hor_in=14, hor_out=hor_size, bn=True,
-                                         name=name)
+                                         hor_in=14, hor_out=hor_size,
+                                         bn=not(remove_bn),name=name)
 
     def forward(self, x):
         x = self.ver_hor_bn_re0(x)
@@ -50,15 +53,16 @@ class SeparablePart1(nn.Module):
         return x
 
 class SeparablePart2(nn.Module):
-    def __init__(self, arch_opt, hor_size_in, patch_numel, ver_size):
+    def __init__(self, arch_opt, hor_size_in, patch_numel, ver_size,
+                 remove_bn=False):
         super(SeparablePart2, self).__init__()
         self.ver_hor_bn_re2 = VerHorBnRe(ver_in=ver_size, ver_out=ver_size,
-                                         hor_in=hor_size_in, hor_out=56, bn=True,
-                                         name="sep2_a")
+                                         hor_in=hor_size_in, hor_out=56,
+                                         bn=not(remove_bn),name="sep2_a")
         self.a = nn.Parameter(th.tensor((0,), dtype=th.float32))
         self.ver_hor_bn_re3 = VerHorBnRe(ver_in=ver_size, ver_out=ver_size,
-                                         hor_in=56, hor_out=56, bn=True,
-                                         name="sep2_b")
+                                         hor_in=56, hor_out=56,
+                                         bn=not(remove_bn),name="sep2_b")
         self.ver_hor_out = VerHorMat(ver_in=ver_size, ver_out=patch_numel,
                                      hor_in=56, hor_out=1)
 
@@ -79,34 +83,41 @@ class SeparablePart2(nn.Module):
 
 
 class SeparableFcNet(nn.Module):
-    def __init__(self, arch_opt, patch_w, ver_size, grad_sep_part1, match_bn):
+    def __init__(self, arch_opt, patch_w, ver_size,
+                 grad_sep_part1, match_bn, remove_bn,name = ""):
         super(SeparableFcNet, self).__init__()
         patch_numel = (patch_w ** 2) * 3 if arch_opt.rgb else patch_w ** 2
 
         # -- grad parameters --
         self.grad_sep_part1 = grad_sep_part1
 
+        # -- remove batch normalization --
+        self.remove_bn = remove_bn
+
         # -- matching batch normalization --
         self.match_bn = match_bn
         self.nframes = -1
 
+        # -- name for save --
+        self.name = name
+
         # -- sep nets [0 & 1] --
         self.sep_part1_s0 = SeparablePart1(arch_opt=arch_opt, hor_size=14,
                                            patch_numel=patch_numel, ver_size=ver_size,
-                                           name="sep1_a")
+                                           name="sep1_a",remove_bn=remove_bn)
         self.sep_part1_s1 = SeparablePart1(arch_opt=arch_opt, hor_size=14,
                                            patch_numel=patch_numel, ver_size=ver_size,
-                                           name="sep1_b")
+                                           name="sep1_b",remove_bn=remove_bn)
 
         # -- sep 0 --
-        self.agg0 = Aggregation0(patch_w)
+        self.agg0 = Aggregation0(patch_w,name=name)
         self.agg0_pre = VerHorMat(ver_in=ver_size, ver_out=patch_numel,
                                   hor_in=14, hor_out=1)
         self.agg0_post = VerHorBnRe(ver_in=patch_numel, ver_out=ver_size,
                                     hor_in=1, hor_out=14, bn=False)
 
         # -- sep 1 --
-        self.agg1 = Aggregation1(patch_w)
+        self.agg1 = Aggregation1(patch_w,name=name)
         self.agg1_pre = VerHorMat(ver_in=ver_size, ver_out=patch_numel,
                                   hor_in=14, hor_out=1)
         self.agg1_post = VerHorBnRe(ver_in=patch_numel, ver_out=ver_size,
@@ -114,7 +125,8 @@ class SeparableFcNet(nn.Module):
 
         # -- combo seps --
         self.sep_part2 = SeparablePart2(arch_opt=arch_opt, hor_size_in=56,
-                                        patch_numel=patch_numel, ver_size=ver_size)
+                                        patch_numel=patch_numel, ver_size=ver_size,
+                                        remove_bn=remove_bn)
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     #
