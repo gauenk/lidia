@@ -46,7 +46,7 @@ def run_internal_adapt(self,_noisy,sigma,srch_img=None,flows=None,ws=29,wt=0,
 
     for astep in range(nadapts):
         clean = self(noisy,sigma,srch_img=_srch_img,
-                     srch_flows=flows,rescale=False,ws=ws,wt=wt)
+                     flows=flows,rescale=False,ws=ws,wt=wt)
         clean = clean.detach().clamp(-1, 1)
         nl_denoiser = adapt_step(self, clean, _srch_img, flows, opt,
                                  total_pad, ws=ws, wt=wt,
@@ -118,7 +118,7 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt, total_pad,
 
             # -- forward pass --
             optim.zero_grad()
-            image_dn = nl_denoiser(noisy_i,opt.sigma,srch_i,srch_flows=flows,
+            image_dn = nl_denoiser(noisy_i,opt.sigma,srch_i,flows=flows,
                                    train=True,rescale=False,ws=ws,wt=wt)
 
             # -- post-process images --
@@ -158,7 +158,7 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt, total_pad,
 
 
 def eval_nl(nl_denoiser,noisy,clean,srch_img,flows,sigma,ws=29,wt=0,verbose=True):
-    deno = nl_denoiser(noisy,sigma,srch_img.clone(),srch_flows=flows,
+    deno = nl_denoiser(noisy,sigma,srch_img.clone(),flows=flows,
                        rescale=False,ws=ws,wt=wt)
     deno = deno.detach().clamp(-1, 1)
     mse = th.mean((deno / 2-clean / 2)**2).item()

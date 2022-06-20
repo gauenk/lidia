@@ -124,6 +124,7 @@ class BatchedLIDIA(nn.Module):
         hp,wp = get_npatches(vshape, train, self.ps, self.pad_offs, self.k)
 
         # -- get inset region --
+        nocoords = coords is None
         if coords is None:
             coords = [0,0,hp,wp]
         else:
@@ -161,22 +162,19 @@ class BatchedLIDIA(nn.Module):
         # -- Batching Info --
         if self.verbose: print("batch_size: ",batch_size)
         nqueries = t * ((hp-1)//stride+1) * ((wp-1)//stride+1)
-        print("nqueries,hp,wp: ",nqueries,hp,wp)
         if batch_size <= 0: batch_size_step = nqueries
+        else: batch_size_step = batch_size
         nbatches = (nqueries - 1)//batch_size_step+1
 
         for batch in range(nbatches):
 
             # -- Info --
-            print("[Step0] Batch %d/%d" % (batch+1,nbatches))
             if self.verbose:
                 print("[Step0] Batch %d/%d" % (batch+1,nbatches))
 
             # -- Batching Inds --
             qindex = min(batch * batch_size_step,nqueries)
             batch_size_i = min(batch_size_step,nqueries - qindex)
-            # queries = dnls.utils.inds.get_query_batch(qindex,batch_size_i,
-            #                                            stride,t,hp,wp,device)
             queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
                                                        stride,coords,t,hp,wp,device)
             th.cuda.synchronize()
@@ -230,8 +228,6 @@ class BatchedLIDIA(nn.Module):
 
             qindex = min(batch * batch_size_step,nqueries)
             batch_size_i = min(batch_size_step,nqueries - qindex)
-            # queries = dnls.utils.inds.get_query_batch(qindex,batch_size_i,
-            #                                           stride,t,hp,wp,device)
             queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
                                                        stride,coords,t,hp,wp,device)
 

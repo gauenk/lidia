@@ -23,10 +23,6 @@ class ImagePairDataSet(data.Dataset):
         self.block_w = block_w
         self.blocks_in_image_h = (self.im_h - self.block_w) // stride + 1
         self.blocks_in_image_w = (self.im_w - self.block_w) // stride + 1
-        # print("ImagePairDataSet Info")
-        # print(self.images_a.shape)
-        # print(self.im_h,self.block_w)
-        # print(self.blocks_in_image_h)
         self.len = self.im_n * self.blocks_in_image_h * self.blocks_in_image_w
         self.ishift = ShiftImageValues()
 
@@ -59,20 +55,13 @@ class ImagePairDataSet(data.Dataset):
 
 
     def __getitem__(self, item):
-        print(self.im_n)
         im, row, col = np.unravel_index(item, (self.im_n, self.blocks_in_image_h,
                                                self.blocks_in_image_w))
         row *= self.stride
         col *= self.stride
         sample_a = self.images_a[im, :,row:row + self.block_w, col:col + self.block_w]
         sample_b = self.images_b[im, :,row:row + self.block_w, col:col + self.block_w]
-        print("-"*30)
-        print("sample_a.shape: ",sample_a.shape)
-        print("sample_b.shape: ",sample_b.shape)
         sample_a,sample_b = self.augment(sample_a,sample_b)
-        print("-"*30)
-        print("sample_a.shape: ",sample_a.shape)
-        print("sample_b.shape: ",sample_b.shape)
 
         return sample_a,sample_b
 
