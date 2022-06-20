@@ -62,7 +62,6 @@ class ImagePairDataSet(data.Dataset):
         sample_a = self.images_a[im, :,row:row + self.block_w, col:col + self.block_w]
         sample_b = self.images_b[im, :,row:row + self.block_w, col:col + self.block_w]
         sample_a,sample_b = self.augment(sample_a,sample_b)
-
         return sample_a,sample_b
 
     def __len__(self):

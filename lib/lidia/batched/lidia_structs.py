@@ -88,7 +88,7 @@ class BatchedLIDIA(nn.Module):
 
     def forward(self, noisy, sigma, srch_img=None, flows=None,
                 ws=29, wt=0, train=False, rescale=True, stride=1,
-                batch_size = -1, batch_alpha = 0.5, coords=None):
+                batch_size = -1, batch_alpha = 0.5, region=None):
         """
 
         Primary Network Backbone
@@ -124,19 +124,19 @@ class BatchedLIDIA(nn.Module):
         hp,wp = get_npatches(vshape, train, self.ps, self.pad_offs, self.k)
 
         # -- get inset region --
-        nocoords = coords is None
-        if coords is None:
-            coords = [0,0,hp,wp]
+        noregion = region is None
+        if region is None:
+            region = [0,t,0,0,hp,wp]
         else:
+            region = [r for r in region] # copy
+            if len(region) == 4: # spatial onyl; add time
+                region = [0,t,] + region
             pad = 2*(self.ps//2)
-            coords_c = [i for i in coords]
-            coords_c[2] += pad
-            coords_c[3] += pad
-            coords = coords_c
-            hp = coords[2] - coords[0]
-            wp = coords[3] - coords[1]
-        print("hp,wp: ",hp,wp)
-        print("coords: ",coords)
+            region[4] += pad
+            region[5] += pad
+            hp = region[4] - region[2]
+            wp = region[5] - region[3]
+        t = region[1] - region[0] # frames to deno
 
         # -- patch-based functions --
         levels = self.get_levels()
@@ -144,9 +144,9 @@ class BatchedLIDIA(nn.Module):
         for lname,params in levels.items():
             dil = params['dil']
             h_l,w_l,pad_l = self.image_shape((hp,wp),ps,dilation=dil,train=train)
-            coords_l = [pad_l,pad_l,hp+pad_l,wp+pad_l]
+            region_l = [pad_l,pad_l,hp+pad_l,wp+pad_l]
             vshape_l = (t,c,h_l,w_l)
-            pfxns[lname] = get_step_fxns(vshape_l,coords_l,ps,stride,dil,device)
+            pfxns[lname] = get_step_fxns(vshape_l,region_l,ps,stride,dil,device)
 
         # -- allocate final video  --
         deno_folds = self.allocate_final(t,c,hp,wp)
@@ -176,7 +176,7 @@ class BatchedLIDIA(nn.Module):
             qindex = min(batch * batch_size_step,nqueries)
             batch_size_i = min(batch_size_step,nqueries - qindex)
             queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
-                                                       stride,coords,t,hp,wp,device)
+                                                       stride,region,t,device)
             th.cuda.synchronize()
 
             # -- Process Each Level --
@@ -229,7 +229,7 @@ class BatchedLIDIA(nn.Module):
             qindex = min(batch * batch_size_step,nqueries)
             batch_size_i = min(batch_size_step,nqueries - qindex)
             queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
-                                                       stride,coords,t,hp,wp,device)
+                                                       stride,region,t,device)
 
 
             #
@@ -271,7 +271,7 @@ class BatchedLIDIA(nn.Module):
         assert_nonan(deno)
 
         # -- Normalize for output ---
-        deno += means # normalize
+        deno += means[region[0]:region[1]] # normalize
         noisy += means # restore
         if rescale:
             deno[...]  = 255.*(deno  * 0.5 + 0.5) # normalize

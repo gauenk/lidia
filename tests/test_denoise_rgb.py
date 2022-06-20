@@ -276,10 +276,10 @@ def test_inset_deno():
     clean = th.from_numpy(clean).contiguous().to(device)
 
     # -- inset region --
-    coords = [0,0,124,124]#32,32]
+    coords = [0,3,2,2,124,124]#32,32]
     def cslice(vid,coords):
-        t,l,b,r = coords
-        return vid[:,:,t:b,l:r]
+        fs,fe,t,l,b,r = coords
+        return vid[fs:fe,:,t:b,l:r]
     csize = (100,100)
 
     # -- gpu info --
@@ -308,7 +308,7 @@ def test_inset_deno():
         # -- lidia exec --
         n4b_model = lidia.batched.load_model(sigma,name="second").to(device)
         deno_n4 = n4b_model(noisy.clone(),sigma,train=train,
-                            batch_size=batch_size,coords=coords)
+                            batch_size=batch_size,region=coords)
         deno_n4 = deno_n4.detach()/255.
         deno_n4 = center_crop(deno_n4,csize)
         print_gpu_stats(gpu_stats,"post-batched.")
@@ -317,19 +317,19 @@ def test_inset_deno():
         # -- save --
         dnls.testing.data.save_burst(deno_n4,SAVE_DIR,"batched")
         dnls.testing.data.save_burst(deno_b,SAVE_DIR,"ref")
-        diff = th.abs(deno_b[[0]] - deno_n4[[0]])
+        diff = th.abs(deno_b - deno_n4)
         dmax = diff.max().item()
         diff /= diff.max()
         dnls.testing.data.save_burst(diff,SAVE_DIR,"diff")
 
         # -- test mse --
-        error = th.sum((deno_n4[[0]] - deno_b[[0]])**2).item()
-        print("L1-Max: ",dmax)
+        error = th.sum((deno_n4 - deno_b)**2).item()
         if verbose:
             print("Train: ",train)
             print("L1-Max: ",dmax)
             print("Error: ",error)
-        assert error < 1.e-2 # allow error from BN
+        assert dmax < 5.e-3 # allow error from BN
+        assert error < 5.e-2 # allow error from BN
 
         # -- gpu info --
         print_gpu_stats(gpu_stats,"final.")
