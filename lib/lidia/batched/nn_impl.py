@@ -41,7 +41,7 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
     # -- number of patches along (height,width) --
     t,c,h,w = image_n.shape
     vshape = image_n.shape
-    hp,wp = get_npatches(vshape, train, self.ps, self.pad_offs, self.k)
+    hp,wp = get_npatches(vshape, train, self.ps, self.pad_offs, self.k, self.lidia_pad)
 
     # -- prepeare image --
     image_n0 = self.pad_crop0(image_n, self.pad_offs, train)
@@ -117,7 +117,7 @@ def run_nn1(self,image_n,queryInds,scatter_nl,
     # -- nugber of patches along (height,width) --
     t,c,h,w = image_n.shape
     vshape = image_n.shape
-    hp,wp = get_npatches(vshape, train, self.ps, self.pad_offs, self.k)
+    hp,wp = get_npatches(vshape, train, self.ps, self.pad_offs, self.k, self.lidia_pad)
 
     # -- pad image --
     image_n1 = self.prepare_image_n1(image_n,train)

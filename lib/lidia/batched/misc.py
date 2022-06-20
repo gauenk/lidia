@@ -88,9 +88,9 @@ def crop_offset(in_image, row_offs, col_offs):
         out_image = in_image
     return out_image
 
-def get_npatches(ishape, train, ps, pad_offs, neigh_pad):
+def get_npatches(ishape, train, ps, pad_offs, neigh_pad, lidia_pad):
     batches = ishape[0]
-    if train:
+    if train and lidia_pad:
         pixels_h = ishape[2] - 2 * pad_offs - 2 * neigh_pad
         pixels_w = ishape[3] - 2 * pad_offs - 2 * neigh_pad
         patches_h = pixels_h - (ps - 1)

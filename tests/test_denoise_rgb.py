@@ -113,6 +113,7 @@ def test_same_refactored_batched():
     vid_name = "text_tourbus"
     # vid_set = "set8"
     # vid_name = "motorbike"
+    verbose = False
 
     # -- video --
     vid_cfg = data_hub.get_video_cfg(vid_set,vid_name)
@@ -141,13 +142,19 @@ def test_same_refactored_batched():
         with th.no_grad():
             deno_ref = n4_model(noisy,sigma,train=train).detach()
 
-        # -- viz --
-        # diff = th.abs(deno_lid - deno_ref)
+        # -- max_diff --
+        diff = th.abs(deno_lid - deno_ref)
+        dmax = diff.max()
         # diff /= diff.max()
         # lidia.testing.data.save_burst(diff,"./output/tests/","diff")
+        if verbose:
+            print("Max L1: ",dmax)
+        assert dmax < 1e-4
 
         # -- test --
         error = th.sum((deno_lid - deno_ref)**2).item()
+        if verbose:
+            print("Error: ",error)
         assert error < 1e-4
 
 #
@@ -206,8 +213,9 @@ def test_batched():
         print_peak_gpu_stats(gpu_stats,"post-Step.")
 
         # -- lidia exec --
-        n4b_model = lidia.batched.load_model(sigma).to(device)
-        deno_n4 = n4b_model(noisy,sigma,train=train,batch_size=batch_size)
+        n4b_model = lidia.batched.load_model(sigma,lidia_pad=True).to(device)
+        deno_n4 = n4b_model(noisy,sigma,train=train,
+                            batch_size=batch_size)
         print_gpu_stats(gpu_stats,"post-Batched.")
         print_peak_gpu_stats(gpu_stats,"post-Batched.")
         # with th.no_grad():
@@ -286,7 +294,7 @@ def test_inset_deno():
     print_peak_gpu_stats(gpu_stats,"Init.")
 
     # -- over training --
-    for train in [False]:#,True]:
+    for train in [True,False]:
 
         # -- get data --
         noisy = clean + sigma * th.randn_like(clean)
@@ -406,7 +414,7 @@ def test_internal_adapt():
         print("PSNR[stnd]: %2.3f" % psnr_n4)
         print("PSNR[batched]: %2.3f" % psnr_n4b)
     error = np.sum((psnr_n4 - psnr_n4b)**2).item()
-    assert error < 1e-3
+    assert error < 5e-3
 
     # -- test --
     error = th.mean((deno_n4 - deno_n4b)**2).item()

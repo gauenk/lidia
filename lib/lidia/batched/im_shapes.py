@@ -26,7 +26,7 @@ from .misc import get_image_params,crop_offset
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 @register_method
-def image_shape(self, ishape, ps, dilation=1, train=False):
+def image_shape(self, ishape, ps, dilation=1):
     h,w = ishape
     pad = dilation*(ps//2)
     hp,wp = h+2*pad,w+2*pad

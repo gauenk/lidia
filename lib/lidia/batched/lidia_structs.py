@@ -121,13 +121,15 @@ class BatchedLIDIA(nn.Module):
         self.pdn.sep_net.nframes = noisy.shape[0]
 
         # -- get num of patches --
-        hp,wp = get_npatches(vshape, train, self.ps, self.pad_offs, self.k)
+        hp,wp = get_npatches(vshape, train, self.ps, self.pad_offs,
+                             self.k, self.lidia_pad)
 
         # -- get inset region --
         noregion = region is None
         if region is None:
             region = [0,t,0,0,hp,wp]
         else:
+            assert self.lidia_pad is False,"Can't do a region and match lidia."
             region = [r for r in region] # copy
             if len(region) == 4: # spatial onyl; add time
                 region = [0,t,] + region
@@ -143,7 +145,7 @@ class BatchedLIDIA(nn.Module):
         pfxns = edict()
         for lname,params in levels.items():
             dil = params['dil']
-            h_l,w_l,pad_l = self.image_shape((hp,wp),ps,dilation=dil,train=train)
+            h_l,w_l,pad_l = self.image_shape((hp,wp),ps,dilation=dil)
             region_l = [pad_l,pad_l,hp+pad_l,wp+pad_l]
             vshape_l = (t,c,h_l,w_l)
             pfxns[lname] = get_step_fxns(vshape_l,region_l,ps,stride,dil,device)
