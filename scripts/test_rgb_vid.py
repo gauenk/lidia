@@ -30,92 +30,144 @@ def run_exp(cfg):
     # -- set device --
     th.cuda.set_device(int(cfg.device.split(":")[1]))
 
-    # -- create timer --
-    timer = lidia.utils.timer.ExpTimer()
-
-    # -- data --
-    data,loaders = data_hub.sets.load(cfg)
-    index = data.te.groups.index(cfg.vid_name)
-    sample = data.te[index]
-
-    # -- unpack --
-    noisy,clean = sample['noisy'],sample['clean']
-    noisy,clean = noisy.to(cfg.device),clean.to(cfg.device)
-    print("noisy.shape: ",noisy.shape)
+    # -- init results --
+    results = edict()
+    results.psnrs = []
+    results.adapt_psnrs = []
+    results.deno_fns = []
+    results.vid_frames = []
+    results.vid_name = []
+    results.timer_flow = []
+    results.timer_adapt = []
+    results.timer_deno = []
 
     # -- network --
     model = lidia.batched.load_model(cfg.sigma).to(cfg.device)
     model.eval()
 
-    # -- size --
-    nframes = noisy.shape[0]
-    ngroups = int(25 * 37./nframes)
-    batch_size = ngroups*1024
+    # -- data --
+    data,loaders = data_hub.sets.load(cfg)
+    data,loaders = data_hub.sets.load(cfg)
+    groups = data.te.groups
+    indices = [i for i,g in enumerate(groups) if cfg.vid_name in g]
+    def fbnds(fnums,lb,ub): return (lb <= np.min(fnums)) and (ub >= np.max(fnums))
+    indices = [i for i in indices if fbnds(data.te.paths['fnums'][groups[i]],
+                                           cfg.frame_start,cfg.frame_end)]
+    for index in indices:
 
-    # -- optical flow --
-    timer.start("flow")
-    if cfg.comp_flow == "true":
-        noisy_np = noisy.cpu().numpy()
-        flows = svnlb.compute_flow(noisy_np,cfg.sigma)
-        flows = edict({k:th.from_numpy(v).to(cfg.device) for k,v in flows.items()})
-    else:
-        flows = None
-    timer.stop("flow")
+        # -- clean memory --
+        th.cuda.empty_cache()
 
-    # -- internal adaptation --
-    timer.start("adapt")
-    run_internal_adapt = cfg.internal_adapt_nsteps > 0
-    run_internal_adapt = run_internal_adapt and (cfg.internal_adapt_nepochs > 0)
-    if run_internal_adapt:
-        model.run_internal_adapt(noisy,cfg.sigma,flows=flows,
-                                 ws=cfg.ws,wt=cfg.wt,batch_size=batch_size,
-                                 nsteps=cfg.internal_adapt_nsteps,
-                                 nepochs=cfg.internal_adapt_nepochs)
-    timer.stop("adapt")
+        # -- unpack --
+        sample = data.te[index]
+        noisy,clean = sample['noisy'],sample['clean']
+        noisy,clean = noisy.to(cfg.device),clean.to(cfg.device)
+        vid_frames = sample['fnums']
+        # print("[%d] noisy.shape: " % index,noisy.shape)
 
-    # -- denoise --
-    timer.start("deno")
-    with th.no_grad():
-        deno = model(noisy,cfg.sigma,flows=flows,
-                     ws=cfg.ws,wt=cfg.wt,batch_size=batch_size)
-    timer.stop("deno")
+        # -- create timer --
+        timer = lidia.utils.timer.ExpTimer()
 
-    # -- save example --
-    out_dir = Path(cfg.saved_dir) / str(cfg.uuid)
-    deno_fns = lidia.utils.io.save_burst(deno,out_dir,"deno")
+        # -- size --
+        nframes = noisy.shape[0]
+        ngroups = int(25 * 37./nframes)
+        batch_size = 390*39#ngroups*1024
 
-    # -- psnr --
-    t = clean.shape[0]
-    deno = deno.detach()
-    clean_rs = clean.reshape((t,-1))/255.
-    deno_rs = deno.reshape((t,-1))/255.
-    mse = th.mean((clean_rs - deno_rs)**2,1)
-    psnrs = -10. * th.log10(mse).detach()
-    psnrs = list(psnrs.cpu().numpy())
+        # -- optical flow --
+        timer.start("flow")
+        if cfg.flow == "true":
+            noisy_np = noisy.cpu().numpy()
+            flows = svnlb.compute_flow(noisy_np,cfg.sigma)
+            flows = edict({k:th.from_numpy(v).to(cfg.device) for k,v in flows.items()})
+        else:
+            flows = None
+        timer.stop("flow")
 
-    # -- init results --
-    results = edict()
-    results.psnrs = psnrs
-    results.deno_fn = deno_fns
-    results.vid_name = [cfg.vid_name]
-    for name,time in timer.items():
-        results[name] = time
-    print(results)
+        # -- internal adaptation --
+        timer.start("adapt")
+        run_internal_adapt = cfg.internal_adapt_nsteps > 0
+        run_internal_adapt = run_internal_adapt and (cfg.internal_adapt_nepochs > 0)
+        adapt_psnrs = [0.]
+        if run_internal_adapt:
+            adapt_psnrs = model.run_internal_adapt(noisy,cfg.sigma,flows=flows,
+                          ws=cfg.ws,wt=cfg.wt,batch_size=batch_size,
+                          nsteps=cfg.internal_adapt_nsteps,
+                          nepochs=cfg.internal_adapt_nepochs,
+                          sample_mtype=cfg.adapt_mtype,
+                          clean_gt = clean,
+                          region_gt = [2,4,128,256,256,384]
+            )
+        timer.stop("adapt")
+
+        # -- denoise --
+        batch_size = 390*100
+        timer.start("deno")
+        with th.no_grad():
+            deno = model(noisy,cfg.sigma,flows=flows,
+                         ws=cfg.ws,wt=cfg.wt,batch_size=batch_size)
+        timer.stop("deno")
+
+        # -- save example --
+        out_dir = Path(cfg.saved_dir) / str(cfg.uuid)
+        deno_fns = lidia.utils.io.save_burst(deno,out_dir,"deno")
+
+        # -- psnr --
+        t = clean.shape[0]
+        deno = deno.detach()
+        clean_rs = clean.reshape((t,-1))/255.
+        deno_rs = deno.reshape((t,-1))/255.
+        mse = th.mean((clean_rs - deno_rs)**2,1)
+        psnrs = -10. * th.log10(mse).detach()
+        psnrs = list(psnrs.cpu().numpy())
+        print(psnrs)
+
+        # -- append results --
+        results.psnrs.append(psnrs)
+        results.adapt_psnrs.append(adapt_psnrs)
+        results.deno_fns.append(deno_fns)
+        results.vid_frames.append(vid_frames)
+        results.vid_name.append([cfg.vid_name])
+        for name,time in timer.items():
+            results[name].append(time)
 
     return results
 
 
+def compute_ssim(clean,deno,div=255.):
+    nframes = clean.shape[0]
+    ssims = []
+    for t in range(nframes):
+        clean_t = clean[t].cpu().numpy().squeeze().transpose((1,2,0))/div
+        deno_t = deno[t].cpu().numpy().squeeze().transpose((1,2,0))/div
+        ssim_t = compute_ssim_ski(clean_t,deno_t,channel_axis=-1)
+        ssims.append(ssim_t)
+    ssims = np.array(ssims)
+    return ssims
+
+def compute_psnr(clean,deno,div=255.):
+    t = clean.shape[0]
+    deno = deno.detach()
+    clean_rs = clean.reshape((t,-1))/div
+    deno_rs = deno.reshape((t,-1))/div
+    mse = th.mean((clean_rs - deno_rs)**2,1)
+    psnrs = -10. * th.log10(mse).detach()
+    psnrs = psnrs.cpu().numpy()
+    return psnrs
+
 def default_cfg():
     # -- config --
     cfg = edict()
-    cfg.nframes_tr = 5
-    cfg.nframes_val = 5
-    cfg.nframes_te = 0
+    cfg.nframes = 5
+    cfg.frame_start = 0
+    cfg.frame_end = 4
     cfg.saved_dir = "./output/saved_results/"
     cfg.checkpoint_dir = "/home/gauenk/Documents/packages/lidia/output/checkpoints/"
     cfg.isize = None
-    cfg.num_workers = 4
+    cfg.num_workers = 1
     cfg.device = "cuda:0"
+    # cfg.isize = "512_512"
+    # cfg.isize = "256_256"
+    # cfg.isize = "128_128"
     return cfg
 
 def main():
@@ -134,34 +186,36 @@ def main():
     # -- get mesh --
     # dnames = ["toy"]
     # vid_names = ["text_tourbus"]
+    # mtypes = ["rand"]
+    mtypes = ["rand","sobel"]
     dnames = ["set8"]
     vid_names = ["snowboard","sunflower","tractor","motorbike",
                  "hypersmooth","park_joy","rafting","touchdown"]
-    vid_names = ["tractor"]
-    sigmas = [30]#,50]
-    internal_adapt_nsteps = [0]#,500]
+    # vid_names = ["tractor"]
+    sigmas = [30,50]#,50]
+    internal_adapt_nsteps = [300]
     internal_adapt_nepochs = [5]
     # ws,wt = [29],[0]
-    ws,wt = [7],[12]
-    comp_flow = ["true"]
+    ws,wt = [7],[10]
+    flow = ["true"]
+    isizes = ["none","512_512","256_256"]
     exp_lists = {"dname":dnames,"vid_name":vid_names,"sigma":sigmas,
                  "internal_adapt_nsteps":internal_adapt_nsteps,
                  "internal_adapt_nepochs":internal_adapt_nepochs,
-                 "comp_flow":comp_flow,"ws":ws,"wt":wt}
+                 "flow":flow,"ws":ws,"wt":wt,"adapt_mtype":mtypes,"isize":isizes}
     exps = cache_io.mesh_pydicts(exp_lists) # create mesh
-    ws,wt = [29],[0]
-    comp_flow = ["false"]
-    exp_lists = {"dname":dnames,"vid_name":vid_names,"sigma":sigmas,
-                 "internal_adapt_nsteps":internal_adapt_nsteps,
-                 "internal_adapt_nepochs":internal_adapt_nepochs,
-                 "comp_flow":comp_flow,"ws":ws,"wt":wt}
-    exps += cache_io.mesh_pydicts(exp_lists) # create mesh
-
+    # ws,wt = [29],[0]
+    # flow = ["false"]
+    # exp_lists = {"dname":dnames,"vid_name":vid_names,"sigma":sigmas,
+    #              "internal_adapt_nsteps":internal_adapt_nsteps,
+    #              "internal_adapt_nepochs":internal_adapt_nepochs,
+    #              "flow":flow,"ws":ws,"wt":wt,"adapt_mtype":mtypes}
+    # exps += cache_io.mesh_pydicts(exp_lists) # create mesh
 
     # pp.pprint(exps)
-    for exp in exps:
-        if exp.internal_adapt_nsteps == 0:
-            exp.internal_adapt_nepochs = 2
+    # for exp in exps:
+    #     if exp.internal_adapt_nsteps == 0:
+    #         exp.internal_adapt_nepochs = 2
 
     # -- group with default --
     cfg = default_cfg()
@@ -194,16 +248,21 @@ def main():
 
     # -- print by dname,sigma --
     for dname,ddf in records.groupby("dname"):
-        field = "internal_adapt_nsteps"
+        # field = "internal_adapt_nsteps"
+        field = "adapt_mtype"
         for adapt,adf in ddf.groupby(field):
-            for cflow,fdf in adf.groupby("comp_flow"):
+            adapt_psnrs = np.stack(adf['adapt_psnrs'].to_numpy())
+            print("adapt_psnrs.shape: ",adapt_psnrs.shape)
+            print(adapt_psnrs)
+            for cflow,fdf in adf.groupby("flow"):
                 for ws,wsdf in fdf.groupby("ws"):
                     for wt,wtdf in wsdf.groupby("wt"):
                         print("adapt,ws,wt,cflow: ",adapt,ws,wt,cflow)
                         for sigma,sdf in wtdf.groupby("sigma"):
                             ave_psnr,ave_time,num_vids = 0,0,0
                             for vname,vdf in sdf.groupby("vid_name"):
-                                ave_psnr += vdf.psnrs.mean()
+                                print("vdf.psnrs.shape: ",vdf.psnrs.shape)
+                                ave_psnr += vdf.psnrs[0].mean()
                                 ave_time += vdf['timer_deno'].iloc[0]/len(vdf)
                                 num_vids += 1
                             ave_psnr /= num_vids

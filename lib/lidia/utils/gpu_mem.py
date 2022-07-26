@@ -1,4 +1,4 @@
-import torch
+import torch as th
 
 def print_gpu_stats(gpu_stats,name):
     fmt_all = "[%s] Memory Allocated: %2.3f"

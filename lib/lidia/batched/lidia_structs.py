@@ -21,6 +21,7 @@ import dnls
 
 # -- separate logic --
 from . import adapt
+from . import adapt_og
 from . import nn_impl
 from . import im_shapes
 
@@ -33,6 +34,7 @@ from .misc import crop_offset,get_npatches,get_step_fxns,assert_nonan
 from lidia.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
 
 @clean_code.add_methods_from(adapt)
+@clean_code.add_methods_from(adapt_og)
 @clean_code.add_methods_from(im_shapes)
 @clean_code.add_methods_from(nn_impl)
 class BatchedLIDIA(nn.Module):
@@ -130,6 +132,8 @@ class BatchedLIDIA(nn.Module):
             region = [0,t,0,0,hp,wp]
         else:
             assert self.lidia_pad is False,"Can't do a region and match lidia."
+            assert region[-1] <= w,"Must be within vid frame size."
+            assert region[-2] <= h,"Must be within vid frame size."
             region = [r for r in region] # copy
             if len(region) == 4: # spatial onyl; add time
                 region = [0,t,] + region
@@ -315,7 +319,7 @@ class BatchedLIDIA(nn.Module):
         image_dn = fold_nl.vid
         patch_cnt = wfold_nl.vid
         image_dn = image_dn[:,:,pad:-pad,pad:-pad]
-        image_dn /= patch_cnt[:,:,pad:-pad,pad:-pad]
+        image_dn /= (patch_cnt[:,:,pad:-pad,pad:-pad] + 1e-10)
         return image_dn
 
     def get_levels(self):

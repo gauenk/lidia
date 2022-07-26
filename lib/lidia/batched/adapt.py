@@ -10,6 +10,7 @@ from .misc import get_default_config,crop_offset
 # -- data structs --
 import torch.utils.data as data
 from lidia.utils.adapt_data import ImagePairDataSet
+from lidia.utils.adapt_rpd import RegionProposalData
 
 # -- linalg --
 import torch as th
@@ -33,12 +34,14 @@ register_method = clean_code.register_method(__methods__)
 
 @register_method
 def run_internal_adapt(self,_noisy,sigma,srch_img=None,flows=None,ws=29,wt=0,
-                       batch_size = -1, nsteps=100, nepochs=5,
-                       noise_sim = None, verbose=False):
+                       batch_size = -1, nsteps=100, nepochs=5, noise_sim = None,
+                       sample_mtype="default", region_template = "3_128_128",
+                       sobel_nlevels = 3, clean_gt=None, region_gt=None, verbose=False):
     if verbose: print("Running Internal Adaptation.")
     noisy = (_noisy/255. - 0.5)/0.5
+    if not(clean_gt is None): _clean_gt =  (clean_gt/255. - 0.5)/0.5
+    else: _clean_gt = None
     opt = get_default_config(sigma)
-    total_pad = 20
     nadapts = 1
     if not(srch_img is None):
         _srch_img = (srch_img/255.-0.5)/0.5
@@ -47,23 +50,32 @@ def run_internal_adapt(self,_noisy,sigma,srch_img=None,flows=None,ws=29,wt=0,
 
     for astep in range(nadapts):
         with th.no_grad():
-            clean = self(noisy,sigma,_srch_img,flows=flows,rescale=False,
-                         ws=ws,wt=wt,batch_size=batch_size)
-        clean = clean.detach().clamp(-1, 1)
-        nl_denoiser = adapt_step(self, clean, _srch_img, flows, opt,
-                                 total_pad, ws=ws, wt=wt, batch_size=batch_size,
-                                 nsteps=nsteps,nepochs=nepochs,
-                                 noise_sim = noise_sim,verbose=verbose)
+            batch_size_no_grad = 390*39
+            clean_raw = self(noisy,sigma,_srch_img,flows=flows,rescale=False,
+                         ws=ws,wt=wt,batch_size=batch_size_no_grad)
+        clean = clean_raw.detach().clamp(-1, 1)
+        psnrs = adapt_step(self, clean, _srch_img, flows, opt,
+                           ws=ws, wt=wt, batch_size=batch_size,
+                           nsteps=nsteps,nepochs=nepochs,
+                           noise_sim = noise_sim,
+                           sample_mtype = sample_mtype,
+                           sobel_nlevels = sobel_nlevels,
+                           region_template=region_template,
+                           noisy_gt=noisy,clean_gt=_clean_gt,
+                           region_gt=region_gt,
+                           verbose=verbose)
+        return psnrs
 
 @register_method
 def run_external_adapt(self,_clean,sigma,srch_img=None,flows=None,ws=29,wt=0,
-                       batch_size = -1, nsteps=100, nepochs=5,
-                       noise_sim=None, verbose=False):
+                       batch_size = -1, nsteps=100, nepochs=5, noise_sim=None,
+                       sample_mtype="default", region_template = "3_96_96",
+                       sobel_nlevels = 3,
+                       verbose=False):
 
     if verbose: print("Running External Adaptation.")
     # -- setup --
     opt = get_default_config(sigma)
-    total_pad = 10
     nadapts = 1
     clean = (_clean/255. - 0.5)/0.5
     # -- adapt --
@@ -77,14 +89,39 @@ def run_external_adapt(self,_clean,sigma,srch_img=None,flows=None,ws=29,wt=0,
     eval_nl(self,noisy,clean,_srch_img,flows,opt.sigma,verbose)
 
     for astep in range(nadapts):
-        nl_denoiser = adapt_step(self, clean, _srch_img, flows, opt,
-                                 total_pad, ws=ws,wt=wt,
-                                 noise_sim = noise_sim, batch_size=batch_size,
-                                 nsteps=nsteps,nepochs=nepochs,verbose=verbose)
+        adapt_step(self, clean, _srch_img, flows, opt,
+                   ws=ws,wt=wt,
+                   noise_sim = noise_sim, batch_size=batch_size,
+                   nsteps=nsteps,nepochs=nepochs,
+                   sample_mtype = sample_mtype,
+                   sobel_nlevels = sobel_nlevels,
+                   region_template=region_template,
+                   verbose=verbose)
 
-def adapt_step(nl_denoiser, clean, srch_img, flows, opt, total_pad,
+def rslice(vid,coords):
+    if coords is None: return vid
+    fs,fe,t,l,b,r = coords
+    return vid[fs:fe,:,t:b,l:r]
+
+def compute_psnr(vid_a,vid_b):
+    t = vid_a.shape[0]
+    mse = th.mean((vid_a.reshape(t,-1)/2. - vid_b.reshape(t,-1)/2.)**2)
+    psnr = -10 * th.log10(mse)
+    psnr = psnr.cpu().numpy()
+    return psnr
+
+def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
                ws=29, wt=0, nsteps=100, nepochs=5, batch_size=-1,
-               noise_sim = None, verbose=False):
+               noise_sim = None, sobel_nlevels = 3,
+               sample_mtype="default", region_template = "3_96_96",
+               noisy_gt=None,clean_gt=None,region_gt=None,verbose=False):
+
+    # -- psnrs --
+    psnrs = []
+    if not(clean_gt is None):
+        psnr0 = compute_psnr(clean,clean_gt)
+        print(psnr0)
+        psnrs.append(psnr0)
 
     # -- optims --
     criterion = th.nn.MSELoss(reduction='mean')
@@ -92,7 +129,7 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt, total_pad,
                               betas=(0.9, 0.999), eps=1e-8)
 
     # -- get data --
-    loader,batch_last_it = get_adapt_dataset(clean,srch_img,opt,total_pad)
+    loader = get_adapt_dataset(clean,sample_mtype,region_template,sobel_nlevels)
 
     # -- train --
     noisy = add_noise_to_image(clean, noise_sim, opt.sigma)
@@ -113,54 +150,71 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt, total_pad,
         device = next(nl_denoiser.parameters()).device
         iloader = enumerate(loader)
         nsamples = min(len(loader),nsteps)
-        for i, (clean_i, srch_i) in iloader:
+        for i, region in iloader:
 
             # -- tenors on device --
-            srch_i = srch_i.to(device=device).contiguous()
-            clean_i = clean_i.to(device=device).contiguous()
-            noisy_i = add_noise_to_image(clean_i,noise_sim,opt.sigma)
-            noisy_i = noisy_i.contiguous()
+            noisy_i = add_noise_to_image(clean,noise_sim,opt.sigma)
 
             # -- forward pass --
             optim.zero_grad()
-            image_dn = nl_denoiser(noisy_i,opt.sigma,srch_i,flows=flows,
+            image_dn = nl_denoiser(noisy_i,opt.sigma,srch_img=None,flows=flows,
                                    ws=ws,wt=wt,train=True,rescale=False,
-                                   batch_size=batch_size)
+                                   batch_size=batch_size,region=region)
 
             # -- post-process images --
             image_dn = image_dn.clamp(-1,1)
-            total_pad = (clean_i.shape[-1] - image_dn.shape[-1]) // 2
-            image_ref = crop_offset(clean_i, (total_pad,), (total_pad,))
+            clean_r = rslice(clean,region)
 
             # -- compute loss --
-            loss = th.log10(criterion(image_dn/2., image_ref/2.))
+            loss = th.log10(criterion(image_dn/2., clean_r/2.))
             assert not np.isnan(loss.item())
 
             # -- update step --
             loss.backward()
             optim.step()
 
+            # -- memory dump --
+            gc.collect()
+            th.cuda.empty_cache()
+
+            # -- logging --
+            if (i % 10 == 0) or (nsteps == i):
+                with th.no_grad():
+                    batch_size_te = 390*100
+                    deno_gt = nl_denoiser(noisy_gt,opt.sigma,srch_img=None,flows=flows,
+                                          ws=ws,wt=wt,train=False,rescale=False,
+                                          batch_size=batch_size_te,region=region_gt)
+                    clean_gt_r = rslice(clean_gt,region_gt)
+                    psnr_gt = compute_psnr(deno_gt,clean_gt_r)
+                    print(psnr_gt)
+                    psnrs.append(psnr_gt)
+
+            # -- message --
             if verbose:
                 print("Processing [%d/%d]: %2.2f" % (i,nsamples,-10*loss.item()))
-
-            batch_bool = i == batch_last_it
+            batch_bool = i == nsteps
             epoch_bool = (epoch + 1) % opt.epochs_between_check == 0
-            print_bool = batch_bool and epoch_bool and verbose
+            print_bool = batch_bool and epoch_bool
             if print_bool:
                 gc.collect()
                 th.cuda.empty_cache()
-                deno = nl_denoiser(noisy,opt.sigma,srch_img.clone(),flows,
-                                   rescale=False,ws=ws,wt=wt)
+                batch_size_te = 390*100
+                with th.no_grad():
+                    deno = nl_denoiser(noisy,opt.sigma,srch_img.clone(),flows,
+                                       rescale=False,ws=ws,wt=wt,
+                                       batch_size=batch_size_te)
                 deno = deno.detach().clamp(-1, 1)
                 mse = criterion(deno / 2,clean / 2).item()
                 train_psnr = -10 * math.log10(mse)
-                a,b,c = epoch + 1, nepochs, train_psnr
-                msg = 'Epoch {} of {} done, training PSNR = {:.2f}'.format(a,b,c)
-                print(msg)
-                sys.stdout.flush()
+                psnrs.append(train_psnr)
+                if verbose:
+                    a,b,c = epoch + 1, nepochs, train_psnr
+                    msg = 'Epoch {} of {} done, training PSNR = {:.2f}'.format(a,b,c)
+                    print(msg)
+                    sys.stdout.flush()
             if i > nsteps: break
 
-    return nl_denoiser
+    return psnrs
 
 
 def eval_nl(nl_denoiser,noisy,clean,srch_img,flows,sigma,ws=29,wt=0,verbose=True):
@@ -173,26 +227,9 @@ def eval_nl(nl_denoiser,noisy,clean,srch_img,flows,sigma,ws=29,wt=0,verbose=True
     if verbose:
         print(msg)
 
-
-def get_adapt_dataset(clean,srch_img,opt,total_pad):
-
-    # -- prepare data --
-    block_w_pad = opt.block_w + 2 * total_pad
-    ref_img = clean
-    srch_img = srch_img
-
-    # -- create dataset --
-    dset = ImagePairDataSet(block_w=block_w_pad,
-                            images_a=ref_img, images_b=srch_img,
-                            stride=opt.dset_stride)
-
-    # -- create loader --
-    loader = data.DataLoader(dset,batch_size=opt.train_batch_size,
-                             shuffle=True, num_workers=0)
-    dlen = loader.dataset.__len__()
-    dbs = loader.batch_size
-    batch_last_it = dlen // dbs - 1
-    return loader,batch_last_it
+def get_adapt_dataset(clean,mtype,region_template,nlevels=3):
+    rpn = RegionProposalData(clean,mtype,region_template,nlevels)
+    return rpn
 
 def add_noise_to_image(clean, noise_sim, sigma):
     if noise_sim is None:

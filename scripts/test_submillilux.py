@@ -50,16 +50,21 @@ def run_exp(cfg):
     th.cuda.set_device(int(cfg.device.split(":")[1]))
 
     # -- network --
-    model = lidia.batched.load_model(cfg.model_sigma,lidia_pad=True).to(cfg.device)
+    model = lidia.batched.load_model(cfg.model_sigma,lidia_pad=False).to(cfg.device)
     model.eval()
     fwd = model.forward
+    def rslice(vid,coords):
+        if coords is None: return vid
+        fs,fe,t,l,b,r = coords
+        return vid[fs:fe,:,t:b,l:r]
     def wrap_fwd(noisy,sigma, srch_img=None, flows=None,
                  ws=29, wt=0, train=False, rescale=True, stride=1,
-                 batch_size = -1, batch_alpha = 0.5):
+                 batch_size = -1, batch_alpha = 0.5, region=None):
         noisy_3d = noisy[:,:3].contiguous()
         deno_3d = fwd(noisy_3d,sigma,srch_img,flows,ws,wt,train,rescale,
-                      stride,batch_size,batch_alpha)
-        deno_4d = th.cat([deno_3d,noisy[:,[3]]],1)
+                      stride,batch_size,batch_alpha,region)
+        depth_1d = rslice(noisy[:,[3]],region)
+        deno_4d = th.cat([deno_3d,depth_1d],1)
         return deno_4d
 
     model.forward = wrap_fwd
@@ -106,7 +111,7 @@ def run_exp(cfg):
         npix = np.prod(noisy.shape[-2:])
         ngroups = int(npix/390.*390.)
         # batch_size = ngroups#*1024
-        batch_size = 390*390
+        batch_size = 39*39#390*390
 
         # -- internal adaptation --
         timer.start("adapt")
@@ -118,18 +123,14 @@ def run_exp(cfg):
             noise_sim = stardeno.load_noise_sim(cfg.device).to(cfg.device)
             def wrap_sim(clean_i):
                 clean_z = 255.*((clean_i * 0.5) + 0.5)
-                print("clean_z[min,max]: ",clean_z.min(),clean_z.max())
                 clean_z = th.clamp(clean_z,0.,255.)
-                print("clean_z[min,max]: ",clean_z.min(),clean_z.max())
-                print("clean_z.shape: ",clean_z.shape)
                 with th.no_grad():
                     noisy_z = noise_sim(clean_z)
                 noisy_i = (noisy_z/255. - 0.5)/0.5
-                print("noisy_i.shape: ",noisy_i.shape)
                 return noisy_i
 
             # -- run adaptation --
-            model.run_internal_adapt(noisy,cfg.model_sigma,flows=flows,
+            model.run_internal_adapt(noisy.clone(),cfg.model_sigma,flows=flows,
                                      ws=cfg.ws,wt=cfg.wt,batch_size=batch_size,
                                      nsteps=cfg.internal_adapt_nsteps,
                                      nepochs=cfg.internal_adapt_nepochs,
@@ -137,6 +138,7 @@ def run_exp(cfg):
         timer.stop("adapt")
 
         # -- denoise --
+        batch_size = 390*39
         timer.start("deno")
         with th.no_grad():
             # deno = model(noisy,cfg.model_sigma)
@@ -144,7 +146,7 @@ def run_exp(cfg):
                          ws=cfg.ws,wt=cfg.wt,batch_size=batch_size)
             deno = deno.detach()
         timer.stop("deno")
-        print("HO")
+        print("deno.shape: ",deno.shape)
         print(deno.max(),deno.min())
         def rescale_deno(vid):
             vid -= vid.min()
@@ -205,8 +207,8 @@ def default_cfg():
     cfg.num_workers = 4
     cfg.device = "cuda:0"
     cfg.seed = 123
-    # cfg.isize = "512_512"
-    cfg.isize = "96_96"
+    cfg.isize = "512_512"
+    # cfg.isize = "96_96"
     return cfg
 
 def main():
