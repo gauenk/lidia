@@ -24,6 +24,9 @@ import cache_io
 
 # -- network --
 import lidia
+import lidia.utils.gpu_mem as gpu_mem
+from lidia.utils.metrics import compute_psnrs
+from lidia.utils.metrics import compute_ssims
 
 def run_exp(cfg):
 
@@ -32,18 +35,25 @@ def run_exp(cfg):
 
     # -- init results --
     results = edict()
+    results.noisy_psnrs = []
     results.psnrs = []
+    results.ssims = []
     results.adapt_psnrs = []
     results.deno_fns = []
     results.vid_frames = []
     results.vid_name = []
+    results.mem_res = []
+    results.mem_alloc = []
+    results.adapt_res = []
+    results.adapt_alloc = []
     results.timer_flow = []
     results.timer_adapt = []
     results.timer_deno = []
 
     # -- network --
-    model = lidia.batched.load_model(cfg.sigma).to(cfg.device)
+    model = lidia.load_model(cfg.model_type,cfg.sigma).to(cfg.device)
     model.eval()
+    imax = 255.
 
     # -- data --
     data,loaders = data_hub.sets.load(cfg)
@@ -84,6 +94,7 @@ def run_exp(cfg):
         timer.stop("flow")
 
         # -- internal adaptation --
+        gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
         timer.start("adapt")
         run_internal_adapt = cfg.internal_adapt_nsteps > 0
         run_internal_adapt = run_internal_adapt and (cfg.internal_adapt_nepochs > 0)
@@ -98,6 +109,7 @@ def run_exp(cfg):
                           region_gt = [2,4,128,256,256,384]
             )
         timer.stop("adapt")
+        adapt_alloc,adapt_res = gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
 
         # -- denoise --
         batch_size = 390*100
@@ -106,27 +118,29 @@ def run_exp(cfg):
             deno = model(noisy,cfg.sigma,flows=flows,
                          ws=cfg.ws,wt=cfg.wt,batch_size=batch_size)
         timer.stop("deno")
+        mem_alloc,mem_res = gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
 
         # -- save example --
         out_dir = Path(cfg.saved_dir) / str(cfg.uuid)
         deno_fns = lidia.utils.io.save_burst(deno,out_dir,"deno")
 
         # -- psnr --
-        t = clean.shape[0]
-        deno = deno.detach()
-        clean_rs = clean.reshape((t,-1))/255.
-        deno_rs = deno.reshape((t,-1))/255.
-        mse = th.mean((clean_rs - deno_rs)**2,1)
-        psnrs = -10. * th.log10(mse).detach()
-        psnrs = list(psnrs.cpu().numpy())
-        print(psnrs)
+        noisy_psnrs = compute_psnrs(noisy,clean,div=imax)
+        psnrs = compute_psnrs(deno,clean,div=imax)
+        ssims = compute_ssims(deno,clean,div=imax)
 
         # -- append results --
         results.psnrs.append(psnrs)
+        results.ssims.append(ssims)
+        results.noisy_psnrs.append(noisy_psnrs)
         results.adapt_psnrs.append(adapt_psnrs)
         results.deno_fns.append(deno_fns)
         results.vid_frames.append(vid_frames)
         results.vid_name.append([cfg.vid_name])
+        results.adapt_res.append([adapt_res])
+        results.adapt_alloc.append([adapt_alloc])
+        results.mem_res.append([mem_res])
+        results.mem_alloc.append([mem_alloc])
         for name,time in timer.items():
             results[name].append(time)
 
@@ -187,30 +201,35 @@ def main():
     # dnames = ["toy"]
     # vid_names = ["text_tourbus"]
     # mtypes = ["rand"]
-    mtypes = ["rand","sobel"]
+    mtypes = ["rand"]#,"sobel"]
     dnames = ["set8"]
-    vid_names = ["snowboard","sunflower","tractor","motorbike",
-                 "hypersmooth","park_joy","rafting","touchdown"]
-    # vid_names = ["tractor"]
-    sigmas = [30,50]#,50]
+    # vid_names = ["snowboard","sunflower","tractor","motorbike",
+    #              "hypersmooth","park_joy","rafting","touchdown"]
+    vid_names = ["sunflower"]
+    sigmas = [50]#,50]
     internal_adapt_nsteps = [300]
     internal_adapt_nepochs = [5]
     # ws,wt = [29],[0]
-    ws,wt = [7],[10]
+    ws,wt = [15],[10]
     flow = ["true"]
-    isizes = ["none","512_512","256_256"]
+    # isizes = ["none","512_512","256_256"]
+    isizes = ["256_256"]
+    nframes = [10]
+    model_type = ["batched"]
     exp_lists = {"dname":dnames,"vid_name":vid_names,"sigma":sigmas,
                  "internal_adapt_nsteps":internal_adapt_nsteps,
                  "internal_adapt_nepochs":internal_adapt_nepochs,
-                 "flow":flow,"ws":ws,"wt":wt,"adapt_mtype":mtypes,"isize":isizes}
+                 "flow":flow,"ws":ws,"wt":wt,"adapt_mtype":mtypes,
+                 "isize":isizes,"nframes":nframes,"model_type":model_type}
     exps = cache_io.mesh_pydicts(exp_lists) # create mesh
-    # ws,wt = [29],[0]
-    # flow = ["false"]
-    # exp_lists = {"dname":dnames,"vid_name":vid_names,"sigma":sigmas,
-    #              "internal_adapt_nsteps":internal_adapt_nsteps,
-    #              "internal_adapt_nepochs":internal_adapt_nepochs,
-    #              "flow":flow,"ws":ws,"wt":wt,"adapt_mtype":mtypes}
-    # exps += cache_io.mesh_pydicts(exp_lists) # create mesh
+
+
+    # -- defaults --
+    exp_lists['ws'] = [29]
+    exp_lists['wt'] = [0]
+    # exp_lists['flow'] = ["false"]
+    # exp_lists['model_type'] = ["original"]
+    exps += cache_io.mesh_pydicts(exp_lists) # create mesh
 
     # pp.pprint(exps)
     # for exp in exps:

@@ -15,10 +15,10 @@ import dnls
 
 def get_step_fxns(vshape,coords,ps,stride,dilation,device):
     pt,dil = 1,dilation
-    scatter = dnls.scatter.ScatterNl(ps,pt,dilation=dil,exact=True)
-    fold = dnls.ifold.iFold(vshape,coords,stride=stride,dilation=dil)
-    wfold = dnls.ifold.iFold(vshape,coords,stride=stride,dilation=dil)
-    unfold = dnls.iunfold.iUnfold(ps,coords,stride=1,dilation=dil)
+    scatter = dnls.UnfoldK(ps,pt,dilation=dil,exact=True)
+    fold = dnls.iFold(vshape,coords,stride=stride,dilation=dil)
+    wfold = dnls.iFold(vshape,coords,stride=stride,dilation=dil)
+    unfold = dnls.iUnfold(ps,coords,stride=1,dilation=dil)
     pfxns = edict()
     pfxns.scatter = scatter
     pfxns.fold = fold

@@ -380,7 +380,7 @@ def test_internal_adapt():
     im_shape = noisy.shape
     noisy = noisy.contiguous()
 
-    # -- lidia original exec --
+    # -- lidia refactored exec --
     set_seed(seed)
     n4_model = lidia.refactored.load_model(sigma).to(device)
     n4_model.run_internal_adapt(noisy,sigma,nsteps=10,nepochs=1)

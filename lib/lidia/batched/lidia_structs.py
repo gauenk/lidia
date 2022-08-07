@@ -287,8 +287,8 @@ class BatchedLIDIA(nn.Module):
     def allocate_final(self,t,c,hp,wp):
         coords = [0,0,hp,wp]
         folds = edict()
-        folds.img = dnls.ifold.iFold((t,c,hp,wp),coords,stride=1,dilation=1)
-        folds.wimg = dnls.ifold.iFold((t,c,hp,wp),coords,stride=1,dilation=1)
+        folds.img = dnls.iFold((t,c,hp,wp),coords,stride=1,dilation=1)
+        folds.wimg = dnls.iFold((t,c,hp,wp),coords,stride=1,dilation=1)
         return folds
 
     def run_parts_final(self,image_dn,patch_weights,qindex,fold_nl,wfold_nl):

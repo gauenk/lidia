@@ -120,7 +120,7 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
     psnrs = []
     if not(clean_gt is None):
         psnr0 = compute_psnr(clean,clean_gt)
-        print(psnr0)
+        # print(psnr0)
         psnrs.append(psnr0)
 
     # -- optims --
@@ -178,7 +178,7 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
             th.cuda.empty_cache()
 
             # -- logging --
-            if (i % 10 == 0) or (nsteps == i):
+            if (i % 50 == 0) or (nsteps == i):
                 with th.no_grad():
                     batch_size_te = 390*100
                     deno_gt = nl_denoiser(noisy_gt,opt.sigma,srch_img=None,flows=flows,
@@ -186,7 +186,8 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
                                           batch_size=batch_size_te,region=region_gt)
                     clean_gt_r = rslice(clean_gt,region_gt)
                     psnr_gt = compute_psnr(deno_gt,clean_gt_r)
-                    print(psnr_gt)
+                    msg = "[%d/%d] Adaptation update: %2.3f"
+                    print(msg % (i+1,nsteps,psnr_gt))
                     psnrs.append(psnr_gt)
 
             # -- message --
