@@ -5,3 +5,4 @@ from . import gpu_mem
 from . import adapt_data
 from . import timer
 from . import misc
+from . import color

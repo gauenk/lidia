@@ -219,8 +219,8 @@ class BatchedLIDIA(nn.Module):
         # -=-=-=-=-=-=-=-=-=-=-=-
 
         for level in levels:
-            vid = pfxns[level].fold.vid
-            wvid = pfxns[level].wfold.vid
+            vid = pfxns[level].fold.vid[0]
+            wvid = pfxns[level].wfold.vid[0]
             vid_z = vid / wvid
             assert_nonan(vid_z)
             levels[level]['vid'] = vid_z
@@ -303,8 +303,8 @@ class BatchedLIDIA(nn.Module):
     def allocate_final(self,t,c,hp,wp):
         coords = [0,0,hp,wp]
         folds = edict()
-        folds.img = dnls.iFold((t,c,hp,wp),coords,stride=1,dilation=1)
-        folds.wimg = dnls.iFold((t,c,hp,wp),coords,stride=1,dilation=1)
+        folds.img = dnls.iFold((1,t,c,hp,wp),coords,stride=1,dilation=1)
+        folds.wimg = dnls.iFold((1,t,c,hp,wp),coords,stride=1,dilation=1)
         return folds
 
     def run_parts_final(self,image_dn,patch_weights,qindex,fold_nl,wfold_nl):
@@ -326,14 +326,14 @@ class BatchedLIDIA(nn.Module):
         wpatches = wpatches.contiguous()
 
         # -- dnls fold --
-        image_dn = fold_nl(image_dn,qindex)
-        patch_cnt = wfold_nl(wpatches,qindex)
+        image_dn = fold_nl(image_dn[None,:],qindex)[0]
+        patch_cnt = wfold_nl(wpatches[None,:],qindex)[0]
 
     def final_format(self,fold_nl,wfold_nl):
         # -- crop --
         pad = self.ps//2
-        image_dn = fold_nl.vid
-        patch_cnt = wfold_nl.vid
+        image_dn = fold_nl.vid[0]
+        patch_cnt = wfold_nl.vid[0]
         image_dn = image_dn[:,:,pad:-pad,pad:-pad]
         image_dn /= (patch_cnt[:,:,pad:-pad,pad:-pad] + 1e-10)
         return image_dn

@@ -11,6 +11,7 @@ from . import testing
 from . import plots
 from . import configs
 from . import explore_configs
+from . import flow
 
 # -- paper --
 from . import aaai23

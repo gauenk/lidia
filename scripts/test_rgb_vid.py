@@ -17,7 +17,8 @@ from easydict import EasyDict as edict
 import data_hub
 
 # -- optical flow --
-import svnlb
+# import svnlb
+from lidia import flow
 
 # -- caching results --
 import cache_io
@@ -82,7 +83,7 @@ def run_exp(cfg):
         region = sample['region']
         noisy,clean = sample['noisy'],sample['clean']
         noisy,clean = noisy.to(cfg.device),clean.to(cfg.device)
-        vid_frames = sample['fnums']
+        vid_frames = sample['fnums'].numpy()
         print("[%d] noisy.shape: " % index,noisy.shape)
 
         # -- optional crop --
@@ -101,9 +102,12 @@ def run_exp(cfg):
         # -- optical flow --
         timer.start("flow")
         if cfg.flow == "true":
-            noisy_np = noisy.cpu().numpy()
-            flows = svnlb.compute_flow(noisy_np,cfg.sigma)
-            flows = edict({k:th.from_numpy(v).to(cfg.device) for k,v in flows.items()})
+            # noisy_np = noisy.cpu().numpy()
+            sigma_est = flow.est_sigma(noisy)
+            flows = flow.run(noisy,sigma_est)
+            # flows = flow.run(noisy_np)
+            # flows = svnlb.compute_flow(noisy_np,cfg.sigma)
+            # flows = edict({k:th.from_numpy(v).to(cfg.device) for k,v in flows.items()})
         else:
             t,c,h,w = noisy.shape
             zflow = th.zeros((t,2,h,w),device=cfg.device,dtype=th.float32)
@@ -213,7 +217,7 @@ def main():
 
     # -- get cache --
     cache_dir = ".cache_io"
-    cache_name = "test_rgb_net" # current!
+    cache_name = "test_rgb_net"
     cache = cache_io.ExpCache(cache_dir,cache_name)
     # cache.clear()
 
@@ -225,11 +229,20 @@ def main():
     dnames = ["set8"]
     vid_names = ["sunflower","snowboard","tractor","motorbike",
                  "hypersmooth","park_joy","rafting","touchdown"]
+    # dnames = ["davis"]
+    # vid_names = ["bike-packing", "blackswan", "bmx-trees", "breakdance",
+    #              "camel", "car-roundabout", "car-shadow", "cows", "dance-twirl",
+    #              "dog", "dogs-jump", "drift-chicane", "drift-straight", "goat",
+    #              "gold-fish", "horsejump-high", "india", "judo", "kite-surf",
+    #              "lab-coat", "libby", "loading", "mbike-trick", "motocross-jump",
+    #              "paragliding-launch", "parkour", "pigs", "scooter-black",
+    #              "shooting", "soapbox"]
+
     # vid_names = ["tractor"]
-    sigmas = [50,30,10]#,30,10]
+    # sigmas = [50,30,10]#,30,10]
+    sigmas = [50]#,30,10]
     internal_adapt_nsteps = [200]
     internal_adapt_nepochs = [1]
-    # ws,wt = [29],[0]
     ws,wt = [15],[5]
     flow = ["true"]
     isizes = ["none"]#,"512_512","256_256"]

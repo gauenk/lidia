@@ -83,7 +83,7 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
 
     # -- indexing patches --
     t,c,h,w = image_n0.shape
-    patches = scatter_nl(image_n0,nlInds)
+    patches = scatter_nl(image_n0[None,:],nlInds[None,:])[0]
     ishape = 'p k 1 c h w -> 1 p k (c h w)'
     patches = rearrange(patches,ishape)
 
@@ -166,7 +166,7 @@ def run_nn1(self,image_n,queryInds,scatter_nl,
     #
 
     # -- dnls --
-    patches = scatter_nl(image_n1,nlInds)
+    patches = scatter_nl(image_n1[None,:],nlInds[None,:])[0]
 
     #
     # -- Final Formatting --

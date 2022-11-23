@@ -17,7 +17,7 @@ class Aggregation0(nn.Module):
         self.patch_w = patch_w
         self.name = name
 
-    def batched_fwd_a(self, patches, inds, fold_nl, wfold_nl):
+    def batched_fwd_a(self, patches, qstart, fold_nl, wfold_nl):
 
         # -- prepare x --
         pt,ps,t = 1,self.patch_w,patches.shape[0]
@@ -25,12 +25,13 @@ class Aggregation0(nn.Module):
 
         # -- exec fold --
         ones = th.ones_like(patches)
-        vid = fold_nl(patches,inds) # inds == qstart
-        wvid = wfold_nl(ones,inds)
+        vid = fold_nl(patches[None,:],qstart)[0] # inds == qstart
+        wvid = wfold_nl(ones[None,:],qstart)[0]
 
         return vid
 
     def batched_fwd_b(self, vid, qindex, bsize, unfold):
+
         # -- main logic --
         y_out = unfold(vid,qindex,bsize)
         y_out = rearrange(y_out,'n 1 pt c h w -> 1 n 1 (pt c h w)')
@@ -55,7 +56,7 @@ class Aggregation1(nn.Module):
         self.bilinear_conv.weight.data = kernel_2d
         self.bilinear_conv.weight.requires_grad = False
 
-    def batched_fwd_a(self, patches, inds, fold_nl, wfold_nl):
+    def batched_fwd_a(self, patches, qstart, fold_nl, wfold_nl):
         # tag-agg1
 
         # -- shapes --
@@ -66,8 +67,8 @@ class Aggregation1(nn.Module):
 
         # -- fold --
         ones = th.ones_like(patches)
-        vid = fold_nl(patches,inds) # inds == qstart
-        wvid = wfold_nl(ones,inds)
+        vid = fold_nl(patches[None,:],qstart)[0] # inds == qstart
+        wvid = wfold_nl(ones[None,:],qstart)[0]
 
         return vid
 
