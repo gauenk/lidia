@@ -27,6 +27,7 @@ from . import im_shapes
 
 # -- utils --
 from lidia.utils import clean_code
+from lidia.utils import gpu_mem
 
 # -- misc imports --
 from .misc import calc_padding
@@ -45,6 +46,11 @@ class BatchedLIDIA(nn.Module):
         super(BatchedLIDIA, self).__init__()
         self.arch_opt = arch_opt
         self.pad_offs = pad_offs
+
+        # -- record nn gpu mem --
+        self.nn_recording = True
+        self.mem_res = -1
+        self.mem_alloc = -1
 
         # -- modify changes --
         self.lidia_pad = lidia_pad
@@ -189,9 +195,19 @@ class BatchedLIDIA(nn.Module):
             for level in levels:
                 pfxns_l,params_l = pfxns[level],levels[level]
 
+                # -- recording nn gpu mem --
+                if self.nn_recording and level == "l0":
+                    gpu_mem.peak_gpu_stats("pre-nn",reset=True)
+
                 # -- Non-Local Search --
                 nn_info = params_l.nn_fxn(noisy,queries,pfxns_l.scatter,
                                           srch_img,flows,train,ws=ws,wt=wt)
+
+                # -- recording nn gpu mem --
+                if self.nn_recording and level == "l0":
+                    mem_res,mem_alloc = gpu_mem.peak_gpu_stats("post-nn",reset=True)
+                    self.mem_res = mem_res
+                    self.mem_alloc = mem_alloc
 
                 # -- Patch-based Denoising --
                 self.pdn.batched_step(nn_info,pfxns_l,params_l,level,qindex)

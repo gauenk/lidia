@@ -213,7 +213,7 @@ def find_nn(self, image_pad, im_params, patch_w, scale=0,
                                                 dist_filter).squeeze(1)
 
     top_dist, top_ind = th.topk(top_dist, 14, dim=3, largest=False, sorted=True)
-    top_ind_rows = top_ind // neigh_patches_w
+    top_ind_rows = th.div(top_ind,neigh_patches_w,rounding_mode='floor')
     top_ind_cols = top_ind % neigh_patches_w
     col_arange = th.arange(im_params['patches_w'], device=image_pad.device).view(1, 1, -1, 1)
     row_arange = th.arange(im_params['patches_h'], device=image_pad.device).view(1, -1, 1, 1)

@@ -38,8 +38,8 @@ class Aggregation0(nn.Module):
         wp = pixels_w# + 2*(ps-1)
         shape = (t,3,hp,wp)
 
-        # -- exec scatter --
-        x,wx = dnls.simple.gather.run(x,ones,_nlInds,shape=shape)
+        # -- exec gather --
+        x,wx = dnls.simple.fold_k.run(x,ones,_nlInds,shape=shape)
 
         # -- post process --
         x = x / wx
@@ -48,8 +48,9 @@ class Aggregation0(nn.Module):
         # print(x[0,0,:5,:5])
 
         # -- scatter --
-        x = dnls.simple.scatter.run(x,_nlInds,ps,pt,dilation=1)
+        x = dnls.simple.unfold_k.run(x,_nlInds,ps,pt,dilation=1)
         x = rearrange(x,'(t p) 1 pt c h w -> t p 1 (pt c h w)',t=t)
+
         if both: return x,xg
         else: return x
 
@@ -90,7 +91,7 @@ class Aggregation1(nn.Module):
         # -- gather --
         shape = (t,3,pixels_h,pixels_w)
         zeros = th.zeros_like(_nlDists)
-        x,wx = dnls.simple.gather.run(x,zeros,_nlInds,shape=shape,dilation=2)
+        x,wx = dnls.simple.fold_k.run(x,zeros,_nlInds,shape=shape,dilation=2)
         x = x / wx
         xg = x
 
@@ -100,7 +101,7 @@ class Aggregation1(nn.Module):
         x = self.bilinear_conv(x).view(t,c,h,w)
 
         # -- scatter --
-        x = dnls.simple.scatter.run(x,_nlInds,ps,pt,dilation=2)
+        x = dnls.simple.unfold_k.run(x,_nlInds,ps,pt,dilation=2)
         x = rearrange(x,'(t p) 1 pt c h w -> t p 1 (pt c h w)',t=t)
 
         if both: return x,xg

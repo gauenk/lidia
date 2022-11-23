@@ -24,6 +24,7 @@ import cache_io
 
 # -- network --
 import lidia
+from lidia.utils.misc import rslice,optional,get_region_gt,slice_flows,set_seed
 import lidia.utils.gpu_mem as gpu_mem
 from lidia.utils.metrics import compute_psnrs
 from lidia.utils.metrics import compute_ssims
@@ -32,6 +33,9 @@ def run_exp(cfg):
 
     # -- set device --
     th.cuda.set_device(int(cfg.device.split(":")[1]))
+
+    # -- set seed --
+    set_seed(cfg.seed)
 
     # -- init results --
     results = edict()
@@ -57,12 +61,17 @@ def run_exp(cfg):
 
     # -- data --
     data,loaders = data_hub.sets.load(cfg)
-    data,loaders = data_hub.sets.load(cfg)
     groups = data.te.groups
     indices = [i for i,g in enumerate(groups) if cfg.vid_name in g]
-    def fbnds(fnums,lb,ub): return (lb <= np.min(fnums)) and (ub >= np.max(fnums))
-    indices = [i for i in indices if fbnds(data.te.paths['fnums'][groups[i]],
-                                           cfg.frame_start,cfg.frame_end)]
+
+    # -- optional filter --
+    frame_start = optional(cfg,"frame_start",0)
+    frame_end = optional(cfg,"frame_end",0)
+    if frame_start >= 0 and frame_end > 0:
+        def fbnds(fnums,lb,ub): return (lb <= np.min(fnums)) and (ub >= np.max(fnums))
+        indices = [i for i in indices if fbnds(data.te.paths['fnums'][groups[i]],
+                                               cfg.frame_start,cfg.frame_end)]
+
     for index in indices:
 
         # -- clean memory --
@@ -70,10 +79,16 @@ def run_exp(cfg):
 
         # -- unpack --
         sample = data.te[index]
+        region = sample['region']
         noisy,clean = sample['noisy'],sample['clean']
         noisy,clean = noisy.to(cfg.device),clean.to(cfg.device)
         vid_frames = sample['fnums']
-        # print("[%d] noisy.shape: " % index,noisy.shape)
+        print("[%d] noisy.shape: " % index,noisy.shape)
+
+        # -- optional crop --
+        noisy = rslice(noisy,region)
+        clean = rslice(clean,region)
+        print("[%d] noisy.shape: " % index,noisy.shape)
 
         # -- create timer --
         timer = lidia.utils.timer.ExpTimer()
@@ -81,7 +96,7 @@ def run_exp(cfg):
         # -- size --
         nframes = noisy.shape[0]
         ngroups = int(25 * 37./nframes)
-        batch_size = 390*39#ngroups*1024
+        batch_size = 32*1024
 
         # -- optical flow --
         timer.start("flow")
@@ -90,7 +105,11 @@ def run_exp(cfg):
             flows = svnlb.compute_flow(noisy_np,cfg.sigma)
             flows = edict({k:th.from_numpy(v).to(cfg.device) for k,v in flows.items()})
         else:
-            flows = None
+            t,c,h,w = noisy.shape
+            zflow = th.zeros((t,2,h,w),device=cfg.device,dtype=th.float32)
+            flows = edict()
+            flows.fflow = zflow
+            flows.bflow = zflow
         timer.stop("flow")
 
         # -- internal adaptation --
@@ -100,25 +119,29 @@ def run_exp(cfg):
         run_internal_adapt = run_internal_adapt and (cfg.internal_adapt_nepochs > 0)
         adapt_psnrs = [0.]
         if run_internal_adapt:
-            adapt_psnrs = model.run_internal_adapt(noisy,cfg.sigma,flows=flows,
+            noisy_a = noisy[:5]
+            clean_a = clean[:5]
+            flows_a = slice_flows(flows,0,5)
+            region_gt = get_region_gt(noisy_a.shape)
+            adapt_psnrs = model.run_internal_adapt(noisy_a,cfg.sigma,flows=flows,
                           ws=cfg.ws,wt=cfg.wt,batch_size=batch_size,
                           nsteps=cfg.internal_adapt_nsteps,
                           nepochs=cfg.internal_adapt_nepochs,
                           sample_mtype=cfg.adapt_mtype,
-                          clean_gt = clean,
-                          region_gt = [2,4,128,256,256,384]
+                          clean_gt = clean_a,region_gt = region_gt#[2,4,128,256,256,384]
             )
         timer.stop("adapt")
         adapt_alloc,adapt_res = gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
 
         # -- denoise --
-        batch_size = 390*100
+        batch_size = 10**8#256#85*1024#390*100
         timer.start("deno")
         with th.no_grad():
             deno = model(noisy,cfg.sigma,flows=flows,
                          ws=cfg.ws,wt=cfg.wt,batch_size=batch_size)
         timer.stop("deno")
-        mem_alloc,mem_res = gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
+        mem_alloc,mem_res = model.mem_alloc,model.mem_res
+        # mem_alloc,mem_res = gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
 
         # -- save example --
         out_dir = Path(cfg.saved_dir) / str(cfg.uuid)
@@ -171,12 +194,9 @@ def compute_psnr(clean,deno,div=255.):
 def default_cfg():
     # -- config --
     cfg = edict()
-    cfg.nframes = 5
-    cfg.frame_start = 0
-    cfg.frame_end = 4
     cfg.saved_dir = "./output/saved_results/"
     cfg.checkpoint_dir = "/home/gauenk/Documents/packages/lidia/output/checkpoints/"
-    cfg.isize = None
+    # cfg.isize = "none"
     cfg.num_workers = 1
     cfg.device = "cuda:0"
     # cfg.isize = "512_512"
@@ -203,33 +223,40 @@ def main():
     # mtypes = ["rand"]
     mtypes = ["rand"]#,"sobel"]
     dnames = ["set8"]
-    # vid_names = ["snowboard","sunflower","tractor","motorbike",
-    #              "hypersmooth","park_joy","rafting","touchdown"]
-    vid_names = ["sunflower"]
-    sigmas = [50]#,50]
-    internal_adapt_nsteps = [300]
-    internal_adapt_nepochs = [5]
+    vid_names = ["sunflower","snowboard","tractor","motorbike",
+                 "hypersmooth","park_joy","rafting","touchdown"]
+    # vid_names = ["tractor"]
+    sigmas = [50,30,10]#,30,10]
+    internal_adapt_nsteps = [200]
+    internal_adapt_nepochs = [1]
     # ws,wt = [29],[0]
-    ws,wt = [15],[10]
+    ws,wt = [15],[5]
     flow = ["true"]
-    # isizes = ["none","512_512","256_256"]
-    isizes = ["256_256"]
-    nframes = [10]
+    isizes = ["none"]#,"512_512","256_256"]
+    # isizes = ["156_156"]#"256_256"]
     model_type = ["batched"]
     exp_lists = {"dname":dnames,"vid_name":vid_names,"sigma":sigmas,
                  "internal_adapt_nsteps":internal_adapt_nsteps,
                  "internal_adapt_nepochs":internal_adapt_nepochs,
                  "flow":flow,"ws":ws,"wt":wt,"adapt_mtype":mtypes,
-                 "isize":isizes,"nframes":nframes,"model_type":model_type}
-    exps = cache_io.mesh_pydicts(exp_lists) # create mesh
+                 "isize":isizes,"model_type":model_type}
+    exps_a = cache_io.mesh_pydicts(exp_lists) # create mesh
 
-
-    # -- defaults --
+    # -- alt search --
     exp_lists['ws'] = [29]
     exp_lists['wt'] = [0]
+    exp_lists['flow'] = ["false"]
+    # exp_lists['model_type'] = ["refactored"]
+    exps_b = cache_io.mesh_pydicts(exp_lists) # create mesh
+    exps = exps_a + exps_b
+
+    # -- defaults --
+    # exp_lists['ws'] = [29]
+    # exp_lists['wt'] = [0]
     # exp_lists['flow'] = ["false"]
-    # exp_lists['model_type'] = ["original"]
-    exps += cache_io.mesh_pydicts(exp_lists) # create mesh
+    # exp_lists['model_type'] = ["refactored"]
+    # exps_b = cache_io.mesh_pydicts(exp_lists) # create mesh
+    # exps = exps_b# + exps_a
 
     # pp.pprint(exps)
     # for exp in exps:
@@ -238,7 +265,15 @@ def main():
 
     # -- group with default --
     cfg = default_cfg()
+    cfg.seed = 123
+    cfg.nframes = 0
+    cfg.frame_start = 0
+    cfg.frame_end = cfg.frame_start + cfg.nframes - 1
+    cfg.frame_end = 0 if cfg.frame_end < 0 else cfg.frame_end
     cache_io.append_configs(exps,cfg) # merge the two
+    # pp.pprint(exps[0])
+    # exit(0)
+
 
     # -- run exps --
     nexps = len(exps)
@@ -253,8 +288,12 @@ def main():
 
         # -- logic --
         uuid = cache.get_uuid(exp) # assing ID to each Dict in Meshgrid
-        # cache.clear_exp(uuid)
         results = cache.load_exp(exp) # possibly load result
+        # if not(results is None) and len(results['psnrs']) == 0:
+        #     results = None
+        #     cache.clear_exp(uuid)
+        # if exp.flow == "true" and results:
+        #     cache.clear_exp(uuid)
         if results is None: # check if no result
             exp.uuid = uuid
             results = run_exp(exp)
@@ -272,23 +311,30 @@ def main():
         for adapt,adf in ddf.groupby(field):
             adapt_psnrs = np.stack(adf['adapt_psnrs'].to_numpy())
             print("adapt_psnrs.shape: ",adapt_psnrs.shape)
-            print(adapt_psnrs)
             for cflow,fdf in adf.groupby("flow"):
                 for ws,wsdf in fdf.groupby("ws"):
                     for wt,wtdf in wsdf.groupby("wt"):
                         print("adapt,ws,wt,cflow: ",adapt,ws,wt,cflow)
                         for sigma,sdf in wtdf.groupby("sigma"):
-                            ave_psnr,ave_time,num_vids = 0,0,0
+                            ave_psnr,ave_ssim,ave_time,num_vids = 0,0,0,0
                             for vname,vdf in sdf.groupby("vid_name"):
-                                print("vdf.psnrs.shape: ",vdf.psnrs.shape)
-                                ave_psnr += vdf.psnrs[0].mean()
+                                psnr_v = vdf.psnrs[0].mean()
+                                ssim_v = vdf.ssims[0].mean()
+                                ave_psnr += psnr_v
+                                ave_ssim += ssim_v
                                 ave_time += vdf['timer_deno'].iloc[0]/len(vdf)
                                 num_vids += 1
+                                uuid = vdf['uuid'].iloc[0]
+                                msg = "\t[%s]: %2.2f %s" % (vname,psnr_v,uuid)
+                                print(msg)
+
                             ave_psnr /= num_vids
+                            ave_ssim /= num_vids
                             ave_time /= num_vids
                             total_frames = len(sdf)
-                            fields = (sigma,ave_psnr,ave_time,total_frames)
-                            print("[%d]: %2.3f @ ave %2.2f sec for %d frames" % fields)
+                            mem = np.stack(vdf['mem_res'].to_numpy()).mean()
+                            fields = (sigma,ave_psnr,ave_ssim,ave_time,total_frames,mem)
+                            print("[%d]: %2.3f,%2.3f @ ave %2.2f sec for %d seq at %2.2f" % fields)
 
 
 if __name__ == "__main__":

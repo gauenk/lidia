@@ -16,16 +16,17 @@ import dnls
 
 # -- separate logic --
 from . import adapt
+from . import adapt_og
 from . import nn_impl
 from . import nn_impl_orig
 
 # -- utils --
 from lidia.utils import clean_code
+from lidia.utils import gpu_mem
 
 # -- misc imports --
 from .misc import crop_offset
 
-@clean_code.add_methods_from(adapt)
 class BaseLIDIA(nn.Module):
 
     def __init__(self, pad_offs, arch_opt, gpu_stats=False):
@@ -33,6 +34,11 @@ class BaseLIDIA(nn.Module):
         self.arch_opt = arch_opt
         self.pad_offs = pad_offs
         self.gpu_stats = gpu_stats
+        self.verbose = False
+
+        self.nn_recording = True
+        self.mem_res = -1
+        self.mem_alloc = -1
 
         self.patch_w = 5 if arch_opt.rgb else 7
         self.ver_size = 80 if arch_opt.rgb else 64
@@ -85,12 +91,22 @@ class BaseLIDIA(nn.Module):
         # -- Non-Local Search --
         #
 
+        # -- recording --
+        if self.nn_recording:
+            gpu_mem.peak_gpu_stats("pre-nn",reset=True)
+
         # -- [nn0 search]  --
         output0 = self.run_nn0(noisy,srch_img,flows,train,ws=ws,wt=wt)
         patches0 = output0[0]
         dists0 = output0[1]
         inds0 = output0[2]
         params0 = output0[3]
+
+        # -- mark recoding --
+        if self.nn_recording:
+            mem_res,mem_alloc = gpu_mem.peak_gpu_stats("post-nn",reset=True)
+            self.mem_res = mem_res
+            self.mem_alloc = mem_alloc
 
         # -- [nn1 search]  --
         output1 = self.run_nn1(noisy,srch_img,flows,train,ws=ws,wt=wt)
@@ -261,11 +277,13 @@ class BaseLIDIA(nn.Module):
 #
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+@clean_code.add_methods_from(adapt)
 @clean_code.add_methods_from(nn_impl)
 class LIDIA(BaseLIDIA):
     def __init__(self, pad_offs, arch_opt, gpu_stats=False):
         super(LIDIA, self).__init__(pad_offs, arch_opt, gpu_stats)
 
+@clean_code.add_methods_from(adapt_og)
 @clean_code.add_methods_from(nn_impl_orig)
 class OriginalLIDIA(BaseLIDIA):
     def __init__(self, pad_offs, arch_opt, gpu_stats=False):

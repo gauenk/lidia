@@ -23,5 +23,15 @@ def print_peak_gpu_stats(verbose,name,reset=True):
         th.cuda.empty_cache()
         th.cuda.synchronize()
         print(fmt % (name,mem_alloc))
-        if reset: th.cuda.reset_peak_memory_stats()
+    if reset: th.cuda.reset_peak_memory_stats()
     return mem_alloc,mem_res
+
+def peak_gpu_stats(name,reset=True):
+    mem_alloc = th.cuda.max_memory_allocated(0) / (1024.**3)
+    mem_res = th.cuda.max_memory_reserved(0) / (1024.**3)
+    if reset:
+        th.cuda.reset_peak_memory_stats()
+        th.cuda.empty_cache()
+        th.cuda.synchronize()
+    return mem_alloc,mem_res
+
