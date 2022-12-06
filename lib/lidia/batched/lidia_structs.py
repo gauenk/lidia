@@ -96,7 +96,7 @@ class BatchedLIDIA(nn.Module):
 
     def forward(self, noisy, sigma, srch_img=None, flows=None,
                 ws=29, wt=0, train=False, rescale=True, stride=1,
-                batch_size = -1, batch_alpha = 0.5, region=None):
+                batch_size = -1, batch_alpha = 0.25, region=None):
         """
 
         Primary Network Backbone
@@ -157,7 +157,7 @@ class BatchedLIDIA(nn.Module):
             dil = params['dil']
             h_l,w_l,pad_l = self.image_shape((hp,wp),ps,dilation=dil)
             region_l = [pad_l,pad_l,hp+pad_l,wp+pad_l]
-            vshape_l = (t,c,h_l,w_l)
+            vshape_l = (1,t,c,h_l,w_l)
             pfxns[lname] = get_step_fxns(vshape_l,region_l,ps,stride,dil,device)
 
         # -- allocate final video  --
@@ -190,6 +190,8 @@ class BatchedLIDIA(nn.Module):
             queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
                                                        stride,region,t,device)
             th.cuda.synchronize()
+            # print("qindex: ",qindex,batch_size_i,nqueries)
+
 
             # -- Process Each Level --
             for level in levels:
@@ -233,7 +235,7 @@ class BatchedLIDIA(nn.Module):
         # -=-=-=-=-=-=-=-=-=-=-=-
 
         # -- shrink batch size since all patches at once --
-        if batch_size > 0: batch_size = int(batch_alpha * batch_size)
+        if batch_size > 0: batch_size_step = int(batch_alpha * batch_size)
         else: batch_size_step = nqueries
         nbatches = (nqueries - 1)//batch_size_step+1
 

@@ -24,9 +24,12 @@ class Aggregation0(nn.Module):
         patches = rearrange(patches,'t n 1 (c h w) -> (t n) 1 1 c h w',h=ps,w=ps)
 
         # -- exec fold --
+        # print("patches.shape: ",patches.shape)
         ones = th.ones_like(patches)
         vid = fold_nl(patches[None,:],qstart)[0] # inds == qstart
         wvid = wfold_nl(ones[None,:],qstart)[0]
+        # print(th.any(vid>0).item())
+        # print(th.any(wvid>0).item())
 
         return vid
 

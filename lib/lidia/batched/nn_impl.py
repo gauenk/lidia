@@ -70,6 +70,7 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
     k,ps,pt,chnls = 14,self.patch_w,1,1
     # nlDists,nlInds = dnls.search.run(img_nn0,queryInds,flows,
     #                                  k,ps,pt,ws,wt,chnls)
+    # print("img_nn0.shape: ",img_nn0.shape)
     nlDists,nlInds = dnls.simple.search.run(img_nn0,queryInds,flows,
                                             k,ps,pt,ws,wt,chnls)
 
@@ -153,6 +154,7 @@ def run_nn1(self,image_n,queryInds,scatter_nl,
     # nlDists,nlInds = dnls.search.run(img_nn1,queryInds,flows,
     #                                  k,ps,pt,ws,wt,chnls,
     #                                  stride=2,dilation=2)
+    # print("img_nn1.shape: ",img_nn1.shape)
     nlDists,nlInds = dnls.simple.search.run(img_nn1,queryInds,flows,
                                             k,ps,pt,ws,wt,chnls,
                                             stride=2,dilation=2)

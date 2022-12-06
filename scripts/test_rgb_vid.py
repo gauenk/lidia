@@ -73,6 +73,7 @@ def run_exp(cfg):
         indices = [i for i in indices if fbnds(data.te.paths['fnums'][groups[i]],
                                                cfg.frame_start,cfg.frame_end)]
 
+    print(th.cuda.memory_summary(abbreviated=True))
     for index in indices:
 
         # -- clean memory --
@@ -96,8 +97,7 @@ def run_exp(cfg):
 
         # -- size --
         nframes = noisy.shape[0]
-        ngroups = int(25 * 37./nframes)
-        batch_size = 32*1024
+        batch_size = 16*1024
 
         # -- optical flow --
         timer.start("flow")
@@ -138,7 +138,7 @@ def run_exp(cfg):
         adapt_alloc,adapt_res = gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
 
         # -- denoise --
-        batch_size = 10**8#256#85*1024#390*100
+        # batch_size = 10**8#256#85*1024#390*100
         timer.start("deno")
         with th.no_grad():
             deno = model(noisy,cfg.sigma,flows=flows,
@@ -227,8 +227,14 @@ def main():
     # mtypes = ["rand"]
     mtypes = ["rand"]#,"sobel"]
     dnames = ["set8"]
-    vid_names = ["sunflower","snowboard","tractor","motorbike",
-                 "hypersmooth","park_joy","rafting","touchdown"]
+    # vid_names = ["sunflower","snowboard","tractor","motorbike",
+    #              "hypersmooth","park_joy","rafting","touchdown"]
+
+    # vid_names = ["sunflower","snowboard"]
+    vid_names = ["tractor","motorbike"]
+    # vid_names = ["hypersmooth","park_joy"]
+    # vid_names = ["rafting","touchdown"]
+
     # dnames = ["davis"]
     # vid_names = ["bike-packing", "blackswan", "bmx-trees", "breakdance",
     #              "camel", "car-roundabout", "car-shadow", "cows", "dance-twirl",
@@ -240,10 +246,11 @@ def main():
 
     # vid_names = ["tractor"]
     # sigmas = [50,30,10]#,30,10]
-    sigmas = [50]#,30,10]
+    sigmas = [30]#,30,10]
     internal_adapt_nsteps = [200]
     internal_adapt_nepochs = [1]
-    ws,wt = [15],[5]
+    # ws,wt = [15],[5]
+    ws,wt = [29],[3]
     flow = ["true"]
     isizes = ["none"]#,"512_512","256_256"]
     # isizes = ["156_156"]#"256_256"]
@@ -279,6 +286,8 @@ def main():
     # -- group with default --
     cfg = default_cfg()
     cfg.seed = 123
+    # cfg.isize = "256_256"
+    cfg.isize = "none"
     cfg.nframes = 0
     cfg.frame_start = 0
     cfg.frame_end = cfg.frame_start + cfg.nframes - 1
