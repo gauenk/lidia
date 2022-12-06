@@ -102,12 +102,8 @@ def run_exp(cfg):
         # -- optical flow --
         timer.start("flow")
         if cfg.flow == "true":
-            # noisy_np = noisy.cpu().numpy()
             sigma_est = flow.est_sigma(noisy)
             flows = flow.run(noisy,sigma_est)
-            # flows = flow.run(noisy_np)
-            # flows = svnlb.compute_flow(noisy_np,cfg.sigma)
-            # flows = edict({k:th.from_numpy(v).to(cfg.device) for k,v in flows.items()})
         else:
             t,c,h,w = noisy.shape
             zflow = th.zeros((t,2,h,w),device=cfg.device,dtype=th.float32)
@@ -227,11 +223,10 @@ def main():
     # mtypes = ["rand"]
     mtypes = ["rand"]#,"sobel"]
     dnames = ["set8"]
-    # vid_names = ["sunflower","snowboard","tractor","motorbike",
-    #              "hypersmooth","park_joy","rafting","touchdown"]
-
+    vid_names = ["sunflower","snowboard","tractor","motorbike",
+                 "hypersmooth","park_joy","rafting","touchdown"]
     # vid_names = ["sunflower","snowboard"]
-    vid_names = ["tractor","motorbike"]
+    # vid_names = ["tractor","motorbike"]
     # vid_names = ["hypersmooth","park_joy"]
     # vid_names = ["rafting","touchdown"]
 
@@ -286,6 +281,7 @@ def main():
     # -- group with default --
     cfg = default_cfg()
     cfg.seed = 123
+    cfg.ntype = "submillilux"
     # cfg.isize = "256_256"
     cfg.isize = "none"
     cfg.nframes = 0
