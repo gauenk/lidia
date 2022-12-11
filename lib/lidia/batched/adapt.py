@@ -67,7 +67,7 @@ def run_internal_adapt(self,_noisy,sigma,srch_img=None,flows=None,ws=29,wt=0,
         return psnrs
 
 @register_method
-def run_external_adapt(self,_clean,sigma,srch_img=None,flows=None,ws=29,wt=0,
+def run_external_adapt(self,_noisy,_clean,sigma,srch_img=None,flows=None,ws=29,wt=0,
                        batch_size = -1, nsteps=100, nepochs=5, noise_sim=None,
                        sample_mtype="default", region_template = "3_96_96",
                        sobel_nlevels = 3,
@@ -85,7 +85,7 @@ def run_external_adapt(self,_clean,sigma,srch_img=None,flows=None,ws=29,wt=0,
     else: _srch_img = clean
 
     # -- eval before --
-    noisy = add_noise_to_image(clean, noise_sim, opt.sigma)
+    # noisy = add_noise_to_image(clean, noise_sim, opt.sigma)
     eval_nl(self,noisy,clean,_srch_img,flows,opt.sigma,verbose)
 
     for astep in range(nadapts):
@@ -119,6 +119,7 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
     # -- psnrs --
     psnrs = []
     if not(clean_gt is None):
+        print(clean.shape,clean_gt.shape)
         psnr0 = compute_psnr(clean,clean_gt)
         # print(psnr0)
         psnrs.append(psnr0)
