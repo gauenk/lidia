@@ -6,3 +6,4 @@ from . import adapt_data
 from . import timer
 from . import misc
 from . import color
+from .misc import optional

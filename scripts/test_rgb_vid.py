@@ -18,14 +18,15 @@ import data_hub
 
 # -- optical flow --
 # import svnlb
-from lidia import flow
+# from lidia import flow
+from dev_basics import flow
 
 # -- caching results --
 import cache_io
 
 # -- network --
 import lidia
-from lidia.utils.misc import rslice,optional,get_region_gt,slice_flows,set_seed
+from lidia.utils.misc import rslice,optional,get_region_gt,set_seed
 import lidia.utils.gpu_mem as gpu_mem
 from lidia.utils.metrics import compute_psnrs
 from lidia.utils.metrics import compute_ssims
@@ -56,24 +57,18 @@ def run_exp(cfg):
     results.timer_deno = []
 
     # -- network --
-    model = lidia.load_model(cfg.model_type,cfg.sigma).to(cfg.device)
+    # model = lidia.load_model(cfg.model_type,cfg.sigma).to(cfg.device)
+    model = lidia.load_model(cfg).to(cfg.device)
     model.eval()
     imax = 255.
 
     # -- data --
     data,loaders = data_hub.sets.load(cfg)
-    groups = data[cfg.dset].groups
-    indices = [i for i,g in enumerate(groups) if cfg.vid_name in g]
-
-    # -- optional filter --
     frame_start = optional(cfg,"frame_start",0)
-    frame_end = optional(cfg,"frame_end",0)
-    if frame_start >= 0 and frame_end > 0:
-        def fbnds(fnums,lb,ub): return (lb <= np.min(fnums)) and (ub >= np.max(fnums))
-        indices = [i for i in indices if fbnds(data[cfg.dset].paths['fnums'][groups[i]],
-                                               cfg.frame_start,cfg.frame_end)]
+    frame_end = optional(cfg,"frame_end",-1)
+    indices = data_hub.filter_subseq(data[cfg.dset],cfg.vid_name,frame_start,frame_end)
+    # print(th.cuda.memory_summary(abbreviated=True))
 
-    print(th.cuda.memory_summary(abbreviated=True))
     for index in indices:
 
         # -- clean memory --
@@ -90,7 +85,6 @@ def run_exp(cfg):
         # -- optional crop --
         noisy = rslice(noisy,region)
         clean = rslice(clean,region)
-        print("[%d] noisy.shape: " % index,noisy.shape)
 
         # -- first three channels only --
         # noisy = noisy[...,:3,:,:].contiguous()
@@ -101,19 +95,12 @@ def run_exp(cfg):
 
         # -- size --
         nframes = noisy.shape[0]
-        batch_size = 16*1024
 
         # -- optical flow --
         timer.start("flow")
-        if cfg.flow == "true":
-            sigma_est = flow.est_sigma(noisy)
-            flows = flow.run(noisy,sigma_est)
-        else:
-            t,c,h,w = noisy.shape
-            zflow = th.zeros((t,2,h,w),device=cfg.device,dtype=th.float32)
-            flows = edict()
-            flows.fflow = zflow
-            flows.bflow = zflow
+        flows = flow.orun(noisy,cfg.flow)
+        flows = flow.index_at(flows,0,0)
+        print(flows.fflow.shape)
         timer.stop("flow")
 
         # -- internal adaptation --
@@ -125,24 +112,22 @@ def run_exp(cfg):
         if run_internal_adapt:
             noisy_a = noisy[:5]
             clean_a = clean[:5]
-            flows_a = slice_flows(flows,0,5)
+            flows_a = flow.slice_at(flows,slice(0,5),0)
             region_gt = get_region_gt(noisy_a.shape)
-            adapt_psnrs = model.run_internal_adapt(noisy_a,cfg.sigma,flows=flows,
-                          ws=cfg.ws,wt=cfg.wt,batch_size=batch_size,
-                          nsteps=cfg.internal_adapt_nsteps,
-                          nepochs=cfg.internal_adapt_nepochs,
-                          sample_mtype=cfg.adapt_mtype,
-                          clean_gt = clean_a,region_gt = region_gt#[2,4,128,256,256,384]
+            adapt_psnrs = model.run_internal_adapt(
+                noisy_a,cfg.sigma,flows=flows,
+                nsteps=cfg.internal_adapt_nsteps,
+                nepochs=cfg.internal_adapt_nepochs,
+                sample_mtype=cfg.adapt_mtype,
+                clean_gt = clean_a,region_gt = region_gt#[2,4,128,256,256,384]
             )
         timer.stop("adapt")
         adapt_alloc,adapt_res = gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
 
         # -- denoise --
-        # batch_size = 10**8#256#85*1024#390*100
         timer.start("deno")
         with th.no_grad():
-            deno = model(noisy,cfg.sigma,flows=flows,
-                         ws=cfg.ws,wt=cfg.wt,batch_size=batch_size)
+            deno = model(noisy,flows=flows)
         timer.stop("deno")
         mem_alloc,mem_res = model.mem_alloc,model.mem_res
         # mem_alloc,mem_res = gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
@@ -258,8 +243,8 @@ def main():
     internal_adapt_nepochs = [1]
     # ws,wt = [15],[5]
     ws,wt = [29],[3]
-    flow = ["true"]
-    isizes = ["none"]#,"512_512","256_256"]
+    flow = [False]
+    isizes = [None]#,"512_512","256_256"]
     # isizes = ["156_156"]#"256_256"]
     model_type = ["batched"]
     exp_lists = {"dname":dnames,"vid_name":vid_names,"sigma":sigmas,
@@ -272,7 +257,7 @@ def main():
     # -- alt search --
     exp_lists['ws'] = [29]
     exp_lists['wt'] = [0]
-    exp_lists['flow'] = ["false"]
+    exp_lists['flow'] = [False]
     # exp_lists['model_type'] = ["refactored"]
     exps_b = cache_io.mesh_pydicts(exp_lists) # create mesh
     exps = exps_a + exps_b

@@ -42,7 +42,8 @@ class BatchedLIDIA(nn.Module):
 
     def __init__(self, pad_offs, arch_opt, lidia_pad=False,
                  match_bn=False,remove_bn=False,grad_sep_part1=True,
-                 name="",verbose=False):
+                 name="",ps=5,ws=29,wt=0,stride=1,bs=-1,bs_te=-1,
+                 bs_alpha=0.25,verbose=False):
         super(BatchedLIDIA, self).__init__()
         self.arch_opt = arch_opt
         self.pad_offs = pad_offs
@@ -61,8 +62,14 @@ class BatchedLIDIA(nn.Module):
         self.name = name
         self.verbose = verbose
 
-        self.patch_w = 5 if arch_opt.rgb else 7
-        self.ps = self.patch_w
+        self.ws = ws
+        self.wt = wt
+        self.stride = stride
+        self.bs = bs
+        self.bs_te = bs_te
+        self.bs_alpha = bs_alpha
+        # self.patch_w = 5 if arch_opt.rgb else 7
+        self.ps = ps#self.patch_w
         self.k = 14
         self.neigh_pad = self.k
         self.ver_size = 80 if arch_opt.rgb else 64
@@ -80,7 +87,7 @@ class BatchedLIDIA(nn.Module):
         self.bilinear_conv.weight.data = kernel_2d
         self.bilinear_conv.weight.requires_grad = False
 
-        self.pdn = PatchDenoiseNet(arch_opt=arch_opt,patch_w=self.patch_w,
+        self.pdn = PatchDenoiseNet(arch_opt=arch_opt,patch_w=self.ps,
                                    ver_size=self.ver_size,
                                    gpu_stats=self.gpu_stats,
                                    match_bn=self.match_bn,
@@ -94,9 +101,8 @@ class BatchedLIDIA(nn.Module):
     #
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-    def forward(self, noisy, sigma, srch_img=None, flows=None,
-                ws=29, wt=0, train=False, rescale=True, stride=1,
-                batch_size = -1, batch_alpha = 0.25, region=None):
+    def forward(self, noisy, srch_img=None, flows=None,
+                rescale=True, region=None):
         """
 
         Primary Network Backbone
@@ -122,7 +128,12 @@ class BatchedLIDIA(nn.Module):
         device = noisy.device
         vshape = noisy.shape
         t,c,h,w = noisy.shape
-        ps,pt = self.patch_w,1
+        ws,wt = self.ws,self.wt
+        ps,pt = self.ps,1
+        stride = self.stride
+        batch_size = self.bs_te if self.training else self.bs
+        batch_alpha = self.bs_alpha
+        train = self.training
 
         # -- assign for match_bn check --
         self.pdn.nframes = noisy.shape[0]
@@ -187,6 +198,7 @@ class BatchedLIDIA(nn.Module):
             # -- Batching Inds --
             qindex = min(batch * batch_size_step,nqueries)
             batch_size_i = min(batch_size_step,nqueries - qindex)
+            # print("batch_size_i: ",batch_size_i)
             queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
                                                        stride,region,t,device)
             th.cuda.synchronize()
@@ -318,7 +330,7 @@ class BatchedLIDIA(nn.Module):
         wpatches = (patch_weights * ones_tmp)
 
         # -- format to fold --
-        ps = self.patch_w
+        ps = self.ps
         shape_str = 't n (c h w) -> (t n) 1 1 c h w'
         image_dn = rearrange(image_dn,shape_str,h=ps,w=ps)
         wpatches = rearrange(wpatches,shape_str,h=ps,w=ps)

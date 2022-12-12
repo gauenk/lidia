@@ -34,9 +34,9 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
     #
 
     # -- pad & unpack --
-    ps = self.patch_w
+    ps = self.ps#patch_w
     device = image_n.device
-    patch_numel = (self.patch_w ** 2) * image_n.shape[1]
+    patch_numel = (ps ** 2) * image_n.shape[1]
 
     # -- number of patches along (height,width) --
     t,c,h,w = image_n.shape
@@ -67,7 +67,7 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
     queryInds[...,2] += sw
 
     # -- search --
-    k,ps,pt,chnls = 14,self.patch_w,1,1
+    k,ps,pt,chnls = 14,self.ps,1,1
     # nlDists,nlInds = dnls.search.run(img_nn0,queryInds,flows,
     #                                  k,ps,pt,ws,wt,chnls)
     # print("img_nn0.shape: ",img_nn0.shape)
@@ -111,9 +111,9 @@ def run_nn1(self,image_n,queryInds,scatter_nl,
 
     # -- unpack --
     t = image_n.shape[0]
-    ps = self.patch_w
+    ps = self.ps#patch_w
     device = image_n.device
-    patch_numel = (self.patch_w ** 2) * image_n.shape[1]
+    patch_numel = (ps ** 2) * image_n.shape[1]
 
     # -- nugber of patches along (height,width) --
     t,c,h,w = image_n.shape
