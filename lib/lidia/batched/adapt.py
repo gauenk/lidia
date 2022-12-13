@@ -56,8 +56,6 @@ def run_internal_adapt(self,_noisy,sigma,srch_img=None,flows=None,
             clean_raw = self(noisy,_srch_img,flows=flows,rescale=False)
         clean = clean_raw.detach().clamp(-1, 1)
         psnrs = adapt_step(self, clean, _srch_img, flows, opt,
-                           batch_size = p.batch_size,
-                           batch_size_te = p.batch_size_te,
                            nsteps = p.nsteps, nepochs = p.nepochs,
                            noise_sim = p.noise_sim,
                            adapt_mtype = p.adapt_mtype,
@@ -91,8 +89,6 @@ def run_external_adapt(self,_noisy,_clean,sigma,srch_img=None,
 
     for astep in range(nadapts):
         adapt_step(self, clean, _srch_img, flows, opt,
-                   batch_size = p.batch_size,
-                   batch_size_te = p.batch_size_te,
                    noise_sim = p.noise_sim,
                    nsteps=p.nsteps,nepochs=p.nepochs,
                    adapt_mtype = p.adapt_mtype,
@@ -114,7 +110,6 @@ def compute_psnr(vid_a,vid_b):
 
 def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
                nsteps=100, nepochs=5,
-               batch_size=-1, batch_size_te = 390*60,
                noise_sim = None, sobel_nlevels = 3,
                adapt_mtype="default", region_template = "3_96_96",
                noisy_gt=None,clean_gt=None,region_gt=None,verbose=False):
@@ -186,8 +181,7 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
                 nl_denoiser.eval()
                 with th.no_grad():
                     deno_gt = nl_denoiser(noisy_gt,srch_img=None,flows=flows,
-                                          train=False,rescale=False,
-                                          region=region_gt)
+                                          rescale=False,region=region_gt)
                     clean_gt_r = rslice(clean_gt,region_gt)
                     psnr_gt = compute_psnr(deno_gt,clean_gt_r)
                     msg = "[%d/%d] Adaptation update: %2.3f"
@@ -250,7 +244,6 @@ def rename_config(_cfg):
     pairs = {'internal_adapt_nsteps':"nsteps",
              'internal_adapt_nepochs':"nepochs",
              'internal_adapt_nadapts':"nadapts",
-             "bs":"batch_size","bs_te":"batch_size_te",
              "adapt_noise_sim":"noise_sim",
              'adapt_mtype':"adapt_mtype",
              'adapt_region_template':"region_template",

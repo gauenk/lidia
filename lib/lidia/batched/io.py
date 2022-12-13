@@ -45,9 +45,9 @@ def load_model(cfg):
     ps = optional(cfg,'ps',5)
     ws = optional(cfg,'ws',29)
     wt = optional(cfg,'wt',0)
-    bs = optional(cfg,'bs',0)
-    bs_te = optional(cfg,'bs_te',390*90)
-    bs_alpha = optional(cfg,'bs_alpha',0.25)
+    bs = optional(cfg,'bs',-1)
+    bs_te = optional(cfg,'bs_te',-1)
+    bs_alpha = optional(cfg,'bs_alpha',0.5)
     adapt_cfg = extract_adapt_config(cfg,optional)
     io_cfg = extract_io_config(cfg,optional)
     if init: return
@@ -90,7 +90,7 @@ def extract_adapt_config(_cfg,optional):
              'adapt_mtype':"rand",
              'adapt_region_template':"3_128_128",
              'sobel_nlevels':3,
-             "bs":32*1024,"bs_te":390*90}
+             "bs":-1,"bs_te":-1}
     return extract_pairs(pairs,_cfg,optional)
 
 def extract_io_config(_cfg,optional):
