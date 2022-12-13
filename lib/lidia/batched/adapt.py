@@ -19,6 +19,7 @@ from einops import repeat,rearrange
 
 # -- path mgmnt --
 from pathlib import Path
+from easydict import EasyDict as edict
 
 # -- separate class and logic --
 from lidia.utils import clean_code
@@ -32,44 +33,46 @@ register_method = clean_code.register_method(__methods__)
 #
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+
 @register_method
 def run_internal_adapt(self,_noisy,sigma,srch_img=None,flows=None,
-                       nsteps=100, nepochs=5, noise_sim = None,
-                       sample_mtype="default", region_template = "3_128_128",
-                       sobel_nlevels = 3, clean_gt=None, region_gt=None,
-                       batch_size_te = 390*39, verbose=False):
+                       clean_gt=None,region_gt=None,verbose=False):
+    # -- unpack --
+    p = rename_config(self.adapt_cfg)
+
+    # -- manage noisy --
     if verbose: print("Running Internal Adaptation.")
     noisy = (_noisy/255. - 0.5)/0.5
     if not(clean_gt is None): _clean_gt =  (clean_gt/255. - 0.5)/0.5
     else: _clean_gt = None
     opt = get_default_config(sigma)
-    nadapts = 1
     if not(srch_img is None):
         _srch_img = (srch_img/255.-0.5)/0.5
         _srch_img = _srch_img.contiguous()
     else: _srch_img = noisy
 
-    for astep in range(nadapts):
+    for astep in range(p.nadapts):
         with th.no_grad():
             clean_raw = self(noisy,_srch_img,flows=flows,rescale=False)
         clean = clean_raw.detach().clamp(-1, 1)
         psnrs = adapt_step(self, clean, _srch_img, flows, opt,
-                           nsteps=nsteps,nepochs=nepochs,
-                           noise_sim = noise_sim,
-                           sample_mtype = sample_mtype,
-                           sobel_nlevels = sobel_nlevels,
-                           region_template=region_template,
-                           noisy_gt=noisy,clean_gt=_clean_gt,
-                           region_gt=region_gt,
-                           verbose=verbose)
+                           batch_size = p.batch_size,
+                           batch_size_te = p.batch_size_te,
+                           nsteps = p.nsteps, nepochs = p.nepochs,
+                           noise_sim = p.noise_sim,
+                           adapt_mtype = p.adapt_mtype,
+                           sobel_nlevels = p.sobel_nlevels,
+                           region_template = p.region_template,
+                           noisy_gt = noisy,clean_gt = _clean_gt,
+                           region_gt = region_gt, verbose = verbose)
         return psnrs
 
 @register_method
-def run_external_adapt(self,_noisy,_clean,sigma,srch_img=None,flows=None,
-                       nsteps=100, nepochs=5, noise_sim=None,
-                       sample_mtype="default", region_template = "3_96_96",
-                       sobel_nlevels = 3,
-                       verbose=False):
+def run_external_adapt(self,_noisy,_clean,sigma,srch_img=None,
+                       flows=None,verbose=False):
+
+    # -- unpack --
+    p = rename_config(self.adapt_cfg)
 
     if verbose: print("Running External Adaptation.")
     # -- setup --
@@ -88,11 +91,13 @@ def run_external_adapt(self,_noisy,_clean,sigma,srch_img=None,flows=None,
 
     for astep in range(nadapts):
         adapt_step(self, clean, _srch_img, flows, opt,
-                   noise_sim = noise_sim, batch_size=batch_size,
-                   nsteps=nsteps,nepochs=nepochs,
-                   sample_mtype = sample_mtype,
-                   sobel_nlevels = sobel_nlevels,
-                   region_template=region_template,
+                   batch_size = p.batch_size,
+                   batch_size_te = p.batch_size_te,
+                   noise_sim = p.noise_sim,
+                   nsteps=p.nsteps,nepochs=p.nepochs,
+                   adapt_mtype = p.adapt_mtype,
+                   sobel_nlevels = p.sobel_nlevels,
+                   region_template=p.region_template,
                    verbose=verbose)
 
 def rslice(vid,coords):
@@ -111,7 +116,7 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
                nsteps=100, nepochs=5,
                batch_size=-1, batch_size_te = 390*60,
                noise_sim = None, sobel_nlevels = 3,
-               sample_mtype="default", region_template = "3_96_96",
+               adapt_mtype="default", region_template = "3_96_96",
                noisy_gt=None,clean_gt=None,region_gt=None,verbose=False):
 
     # -- psnrs --
@@ -128,7 +133,7 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
                               betas=(0.9, 0.999), eps=1e-8)
 
     # -- get data --
-    loader = get_adapt_dataset(clean,sample_mtype,region_template,sobel_nlevels)
+    loader = get_adapt_dataset(clean,adapt_mtype,region_template,sobel_nlevels)
 
     # -- train --
     noisy = add_noise_to_image(clean, noise_sim, opt.sigma)
@@ -239,3 +244,18 @@ def add_noise_to_image(clean, noise_sim, sigma):
 
 def sigma_255_to_torch(sigma_255):
     return (sigma_255 / 255) / 0.5
+
+def rename_config(_cfg):
+    cfg = edict()
+    pairs = {'internal_adapt_nsteps':"nsteps",
+             'internal_adapt_nepochs':"nepochs",
+             'internal_adapt_nadapts':"nadapts",
+             "bs":"batch_size","bs_te":"batch_size_te",
+             "adapt_noise_sim":"noise_sim",
+             'adapt_mtype':"adapt_mtype",
+             'adapt_region_template':"region_template",
+             'sobel_nlevels':"sobel_nlevels"}
+    for key0,key1 in pairs.items():
+        cfg[key1] = _cfg[key0]
+    return cfg
+

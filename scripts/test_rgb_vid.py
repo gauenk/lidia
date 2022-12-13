@@ -99,28 +99,23 @@ def run_exp(cfg):
         # -- optical flow --
         timer.start("flow")
         flows = flow.orun(noisy,cfg.flow)
-        flows = flow.index_at(flows,0,0)
         print(flows.fflow.shape)
         timer.stop("flow")
 
         # -- internal adaptation --
         gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
         timer.start("adapt")
-        run_internal_adapt = cfg.internal_adapt_nsteps > 0
-        run_internal_adapt = run_internal_adapt and (cfg.internal_adapt_nepochs > 0)
+        run_adapt = cfg.internal_adapt_nsteps > 0
+        run_adapt = run_adapt and (cfg.internal_adapt_nepochs > 0)
         adapt_psnrs = [0.]
-        if run_internal_adapt:
+        if run_adapt:
             noisy_a = noisy[:5]
             clean_a = clean[:5]
-            flows_a = flow.slice_at(flows,slice(0,5),0)
+            flows_a = flow.slice_at(flows,slice(0,5),1)
             region_gt = get_region_gt(noisy_a.shape)
             adapt_psnrs = model.run_internal_adapt(
                 noisy_a,cfg.sigma,flows=flows,
-                nsteps=cfg.internal_adapt_nsteps,
-                nepochs=cfg.internal_adapt_nepochs,
-                sample_mtype=cfg.adapt_mtype,
-                clean_gt = clean_a,region_gt = region_gt#[2,4,128,256,256,384]
-            )
+                clean_gt = clean_a,region_gt = region_gt)
         timer.stop("adapt")
         adapt_alloc,adapt_res = gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
 
@@ -286,6 +281,12 @@ def main():
     cfg.frame_start = 0
     cfg.frame_end = cfg.frame_start + cfg.nframes - 1
     cfg.frame_end = 0 if cfg.frame_end < 0 else cfg.frame_end
+    cfg.pretrained_load = True
+    cfg.bs = 30
+    cfg.bs_te = 30
+    # cfg.pretrained_path = "model_state_sigma_15_c.pt"
+    # cfg.pretrained_path = "model_state_sigma_25_c.pt"
+    cfg.pretrained_path = "model_state_sigma_50_c.pt"
     cache_io.append_configs(exps,cfg) # merge the two
     # pp.pprint(exps[0])
     # exit(0)

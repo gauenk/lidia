@@ -34,16 +34,19 @@ from .misc import calc_padding
 from .misc import crop_offset,get_npatches,get_step_fxns,assert_nonan
 from lidia.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
 
+# -- dev basics --
+from dev_basics import flow
+
 @clean_code.add_methods_from(adapt)
 @clean_code.add_methods_from(adapt_og)
 @clean_code.add_methods_from(im_shapes)
 @clean_code.add_methods_from(nn_impl)
 class BatchedLIDIA(nn.Module):
 
-    def __init__(self, pad_offs, arch_opt, lidia_pad=False,
+    def __init__(self, adapt_cfg, pad_offs, arch_opt, lidia_pad=False,
                  match_bn=False,remove_bn=False,grad_sep_part1=True,
                  name="",ps=5,ws=29,wt=0,stride=1,bs=-1,bs_te=-1,
-                 bs_alpha=0.25,verbose=False):
+                 bs_alpha=0.25, verbose=False):
         super(BatchedLIDIA, self).__init__()
         self.arch_opt = arch_opt
         self.pad_offs = pad_offs
@@ -68,6 +71,8 @@ class BatchedLIDIA(nn.Module):
         self.bs = bs
         self.bs_te = bs_te
         self.bs_alpha = bs_alpha
+        self.adapt_cfg = adapt_cfg
+
         # self.patch_w = 5 if arch_opt.rgb else 7
         self.ps = ps#self.patch_w
         self.k = 14
@@ -134,6 +139,9 @@ class BatchedLIDIA(nn.Module):
         batch_size = self.bs_te if self.training else self.bs
         batch_alpha = self.bs_alpha
         train = self.training
+
+        # -- no batch flows --
+        flows = flow.remove_batch(flows)
 
         # -- assign for match_bn check --
         self.pdn.nframes = noisy.shape[0]
