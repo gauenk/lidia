@@ -17,9 +17,12 @@ from .batched import extract_model_config
 # -- paper --
 from . import aaai23
 
+# -- api for searching --
+from . import search
+from .search import get_search,extract_search_config
+
 # -- model api --
 from .utils import optional
-
 
 def load_model(cfg):
     mtype = optional(cfg,'model_type','batched')
