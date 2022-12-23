@@ -98,9 +98,23 @@ def run_exp(cfg):
 
         # -- optical flow --
         timer.start("flow")
+        # if cfg.flow == "true":
+        #     sigma_est = flow.est_sigma(noisy)
+        #     # flows = flow.run(noisy,sigma_est,"svnlb")
+        #     flows = flow.run(noisy,sigma_est,"cv2")
+        # else:
+        #     t,c,h,w = noisy.shape
+        #     zflow = th.zeros((t,2,h,w),device=cfg.device,dtype=th.float32)
+        #     flows = edict()
+        #     flows.fflow = zflow
+        #     flows.bflow = zflow
         flows = flow.orun(noisy,cfg.flow)
         print(flows.fflow.shape)
         timer.stop("flow")
+
+        # -- info --
+        print("fflow[min,max]: ",flows.fflow.min().item(),flows.fflow.max().item())
+        print("bflow[min,max]: ",flows.bflow.min().item(),flows.bflow.max().item())
 
         # -- internal adaptation --
         gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
@@ -198,6 +212,8 @@ def main():
     # -- get cache --
     cache_dir = ".cache_io"
     cache_name = "test_rgb_net"
+    cache_name = "test_rgb_net_supflow"
+    cache_name = "test_rgb_net_svnlb"
     cache = cache_io.ExpCache(cache_dir,cache_name)
     # cache.clear()
 
@@ -255,7 +271,7 @@ def main():
     exp_lists['flow'] = [False]
     # exp_lists['model_type'] = ["refactored"]
     exps_b = cache_io.mesh_pydicts(exp_lists) # create mesh
-    exps = exps_a + exps_b
+    exps = exps_a# + exps_b
 
     # -- defaults --
     # exp_lists['ws'] = [29]

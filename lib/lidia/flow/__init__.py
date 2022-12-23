@@ -17,23 +17,48 @@ from easydict import EasyDict as edict
 # -- opencv --
 import cv2 as cv
 
+# -- svnb --
+try:
+    import svnlb
+except:
+    pass
+
 # -- local --
 from ..utils import color
 
-def run_batch(vid,sigma):
+def run_batch(vid,sigma,ftype="cv2"):
     B = vid.shape[0]
     flows = edict()
     flows.fflow,flows.bflow = [],[]
     for b in range(B):
-        flows_b = run(vid[b],sigma)
+        flows_b = run(vid[b],sigma,ftype)
         flows.fflow.append(flows_b.fflow)
         flows.bflow.append(flows_b.bflow)
     flows.fflow = th.stack(flows.fflow)
     flows.bflow = th.stack(flows.bflow)
     return flows
 
-def run(vid_in,sigma):
+def run(vid_in,sigma,ftype="cv2"):
+    if ftype == "cv":
+        return run_cv2(vid_in,sigma)
+    elif ftype == "svnlb":
+        return run_svnlb(vid_in,sigma)
+    else:
+        raise ValueError("Uknown flow type [{ftype}]")
 
+def run_svnlb(vid_in,sigma):
+
+    # -- run --
+    vid_in_c = vid_in.cpu().numpy()
+    fflow,bflow = svnlb.swig.runPyFlow(vid_in_c,sigma)
+
+    # -- packing --
+    flows = edict()
+    flows.fflow = th.from_numpy(fflow).to(vid_in.device)
+    flows.bflow = th.from_numpy(bflow).to(vid_in.device)
+    return flows
+
+def run_cv2(vid_in,sigma):
     # -- init --
     device = vid_in.device
     vid_in = vid_in.cpu()
