@@ -46,7 +46,7 @@ class BatchedLIDIA(nn.Module):
     def __init__(self, adapt_cfg, pad_offs, arch_opt, lidia_pad=False,
                  match_bn=False,remove_bn=False,grad_sep_part1=True,
                  name="",ps=5,ws=29,wt=0,stride=1,bs=-1,bs_te=-1,
-                 bs_alpha=0.25, verbose=False):
+                 bs_alpha=0.25, idiv=False, rescale=True, verbose=False):
         super(BatchedLIDIA, self).__init__()
         self.arch_opt = arch_opt
         self.pad_offs = pad_offs
@@ -64,6 +64,7 @@ class BatchedLIDIA(nn.Module):
         self.gpu_stats = False
         self.name = name
         self.verbose = verbose
+        self.times = {}
 
         self.ws = ws
         self.wt = wt
@@ -72,6 +73,8 @@ class BatchedLIDIA(nn.Module):
         self.bs_te = bs_te
         self.bs_alpha = bs_alpha
         self.adapt_cfg = adapt_cfg
+        self.idiv = idiv
+        self.rescale = rescale
 
         # self.patch_w = 5 if arch_opt.rgb else 7
         self.ps = ps#self.patch_w
@@ -106,8 +109,7 @@ class BatchedLIDIA(nn.Module):
     #
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-    def forward(self, noisy, srch_img=None, flows=None,
-                rescale=True, region=None):
+    def forward(self, noisy, srch_img=None, flows=None, region=None):
         """
 
         Primary Network Backbone
@@ -122,7 +124,8 @@ class BatchedLIDIA(nn.Module):
 
         # -- normalize for input ---
         self.print_gpu_stats("Init")
-        if rescale: noisy = (noisy/255. - 0.5)/0.5
+        if self.idiv: noisy = noisy/255.
+        if self.rescale: noisy = (noisy - 0.5)/0.5
         means = noisy.mean((-2,-1),True)
         noisy -= means
         if srch_img is None:
@@ -317,9 +320,12 @@ class BatchedLIDIA(nn.Module):
         # -- Normalize for output ---
         deno += means[region[0]:region[1]] # normalize
         noisy += means # restore
-        if rescale:
-            deno[...]  = 255.*(deno  * 0.5 + 0.5) # normalize
-            noisy[...] = 255.*(noisy * 0.5 + 0.5) # restore
+        if self.rescale:
+            deno[...]  = deno  * 0.5 + 0.5 # normalize
+            noisy[...] = noisy * 0.5 + 0.5 # restore
+        if self.idiv:
+            deno[...] = 255.*deno
+            noisy[...] = 255.*noisy
         return deno
 
     def allocate_final(self,t,c,hp,wp):
