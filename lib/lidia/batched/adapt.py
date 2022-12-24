@@ -61,6 +61,7 @@ def run_internal_adapt(self,_noisy,sigma,srch_img=None,flows=None,
     for astep in range(p.nadapts):
         with th.no_grad():
             clean_raw = self(noisy,_srch_img,flows=flows)
+            # clean_raw = self(noisy,flows=flows,srch_img=_srch_img,rescale=False)
         clean = clean_raw.detach().clamp(-1, 1)
         psnrs = adapt_step(self, clean, _srch_img, flows, opt,
                            nsteps = p.nsteps, nepochs = p.nepochs,
@@ -170,6 +171,8 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
             optim.zero_grad()
             nl_denoiser.train()
             image_dn = nl_denoiser(noisy_i,srch_img=None,flows=flows,region=region)
+            # image_dn = nl_denoiser(noisy_i,flows=flows,srch_img=None,
+            #                        rescale=False,region=region)
 
             # -- post-process images --
             image_dn = image_dn.clamp(-1,1)
@@ -193,6 +196,8 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
                 with th.no_grad():
                     deno_gt = nl_denoiser(noisy_gt,srch_img=None,flows=flows,
                                           region=region_gt)
+                    # deno_gt = nl_denoiser(noisy_gt,flows=flows,srch_img=None,
+                    #                       rescale=False,region=region_gt)
                     clean_gt_r = rslice(clean_gt,region_gt)
                     psnr_gt = compute_psnr(deno_gt,clean_gt_r)
                     msg = "[%d/%d] Adaptation update: %2.3f"
@@ -211,6 +216,8 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
                 nl_denoiser.eval()
                 with th.no_grad():
                     deno = nl_denoiser(noisy,srch_img.clone(),flows)
+                    # deno = nl_denoiser(noisy,flows,srch_img.clone(),
+                    #                    rescale=False)
                 deno = deno.detach().clamp(-1, 1)
                 mse = criterion(deno / 2,clean / 2).item()
                 train_psnr = -10 * math.log10(mse)
@@ -227,6 +234,7 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
 
 def eval_nl(nl_denoiser,noisy,clean,srch_img,flows,verbose=True):
     deno = nl_denoiser(noisy,srch_img.clone(),flows=flows)
+    # deno = nl_denoiser(noisy,flows=flows,srch_img=srch_img.clone(),rescale=False)
     deno = deno.detach().clamp(-1, 1)
     mse = th.mean((deno / 2-clean / 2)**2).item()
     psnr = -10 * math.log10(mse)

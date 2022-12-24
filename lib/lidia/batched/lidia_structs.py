@@ -24,6 +24,7 @@ from . import adapt
 from . import adapt_og
 from . import nn_impl
 from . import im_shapes
+from . import nn_timer
 
 # -- utils --
 from lidia.utils import clean_code
@@ -36,7 +37,10 @@ from lidia.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
 
 # -- dev basics --
 from dev_basics import flow
+from dev_basics.utils.timer import ExpTimerList,ExpTimer
+from dev_basics.utils import clean_code
 
+@clean_code.add_methods_from(nn_timer)
 @clean_code.add_methods_from(adapt)
 @clean_code.add_methods_from(adapt_og)
 @clean_code.add_methods_from(im_shapes)
@@ -46,15 +50,21 @@ class BatchedLIDIA(nn.Module):
     def __init__(self, adapt_cfg, pad_offs, arch_opt, lidia_pad=False,
                  match_bn=False,remove_bn=False,grad_sep_part1=True,
                  name="",ps=5,ws=29,wt=0,stride=1,bs=-1,bs_te=-1,
-                 bs_alpha=0.25, idiv=False, rescale=True, verbose=False):
+                 bs_alpha=0.25, idiv=False, rescale=True,
+                 nn_recording=False,nn_record_first_only = False,
+                 use_nn_timer=False, verbose=False):
         super(BatchedLIDIA, self).__init__()
         self.arch_opt = arch_opt
         self.pad_offs = pad_offs
 
         # -- record nn gpu mem --
-        self.nn_recording = True
+        self.use_timer = use_nn_timer
+        self.times = ExpTimerList(self.use_timer)
+        self.nn_recording = nn_recording
+        self.nn_record_first_only = nn_record_first_only
         self.mem_res = -1
         self.mem_alloc = -1
+        self.imax = 1.
 
         # -- modify changes --
         self.lidia_pad = lidia_pad
@@ -110,6 +120,7 @@ class BatchedLIDIA(nn.Module):
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
     def forward(self, noisy, srch_img=None, flows=None, region=None):
+
         """
 
         Primary Network Backbone
@@ -124,8 +135,9 @@ class BatchedLIDIA(nn.Module):
 
         # -- normalize for input ---
         self.print_gpu_stats("Init")
-        if self.idiv: noisy = noisy/255.
+        if self.idiv: noisy = noisy/self.imax#255.
         if self.rescale: noisy = (noisy - 0.5)/0.5
+        # if rescale: noisy = (noisy/self.imax - 0.5)/0.5
         means = noisy.mean((-2,-1),True)
         noisy -= means
         if srch_img is None:
@@ -193,6 +205,12 @@ class BatchedLIDIA(nn.Module):
         #
         # -=-=-=-=-=-=-=-=-=-=-=-
 
+
+        # -- timer --
+        timer_attn = ExpTimer(self.use_timer)
+        timer_attn.sync_start("attn")
+        rec_mem = True # for gpu recording
+
         # -- Batching Info --
         if self.verbose: print("batch_size: ",batch_size)
         nqueries = t * ((hp-1)//stride+1) * ((wp-1)//stride+1)
@@ -215,27 +233,42 @@ class BatchedLIDIA(nn.Module):
             th.cuda.synchronize()
             # print("qindex: ",qindex,batch_size_i,nqueries)
 
-
             # -- Process Each Level --
             for level in levels:
+
+                # -- timer --
+                timer = ExpTimer(self.use_timer)
+
+                # -- unpack --
                 pfxns_l,params_l = pfxns[level],levels[level]
 
                 # -- recording nn gpu mem --
                 if self.nn_recording and level == "l0":
                     gpu_mem.peak_gpu_stats("pre-nn",reset=True)
+                timer.sync_start("search")
+
 
                 # -- Non-Local Search --
+
                 nn_info = params_l.nn_fxn(noisy,queries,pfxns_l.scatter,
                                           srch_img,flows,train,ws=ws,wt=wt)
 
                 # -- recording nn gpu mem --
+                timer.sync_stop("search")
                 if self.nn_recording and level == "l0":
                     mem_res,mem_alloc = gpu_mem.peak_gpu_stats("post-nn",reset=True)
-                    self.mem_res = mem_res
-                    self.mem_alloc = mem_alloc
+                    if rec_mem:
+                        self.mem_res = mem_res
+                        self.mem_alloc = mem_alloc
+                        if self.nn_record_first_only: rec_mem = False
+                timer.sync_start("agg")
 
                 # -- Patch-based Denoising --
                 self.pdn.batched_step(nn_info,pfxns_l,params_l,level,qindex)
+
+                # -- timer --
+                timer.sync_stop("agg")
+                self._update_times(timer)
 
         # -=-=-=-=-=-=-=-=-=-=-=-
         #
@@ -243,6 +276,11 @@ class BatchedLIDIA(nn.Module):
         #
         # -=-=-=-=-=-=-=-=-=-=-=-
 
+        # -- timing update --
+        timer_attn.sync_stop("attn")
+        self._update_times(timer_attn)
+
+        # -- normalize --
         for level in levels:
             vid = pfxns[level].fold.vid[0]
             wvid = pfxns[level].wfold.vid[0]
@@ -328,6 +366,12 @@ class BatchedLIDIA(nn.Module):
             noisy[...] = 255.*noisy
         return deno
 
+    def restore_vid(self,vid,means,rescale):
+        vid += means # restore
+        if rescale:
+            vid[...] = self.imax*(vid * 0.5 + 0.5) # restore
+        return vid
+
     def allocate_final(self,t,c,hp,wp):
         coords = [0,0,hp,wp]
         folds = edict()
@@ -379,6 +423,22 @@ class BatchedLIDIA(nn.Module):
 
     def print_gpu_stats(self,name="-"):
         print_gpu_stats(self.gpu_stats,name)
+
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    #
+    #             Timing
+    #
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    # def update_times(self):
+    #     for i in range(self.nblocks-1):
+    #         self._update_times(self.nls[i].times)
+    #         self.nls[i]._reset_times()
+
+    def reset_times(self):
+        # for i in range(self.nblocks-1):
+        #     self.nls[i]._reset_times()
+        self._reset_times()
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     #

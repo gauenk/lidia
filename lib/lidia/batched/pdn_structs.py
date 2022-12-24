@@ -16,13 +16,15 @@ from lidia.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
 
 class PatchDenoiseNet(nn.Module):
     def __init__(self, arch_opt, patch_w, ver_size, gpu_stats,
-                 grad_sep_part1, match_bn, remove_bn,name=""):
+                 grad_sep_part1, match_bn, remove_bn,name="",
+                 nn_only=False):
         super(PatchDenoiseNet, self).__init__()
 
         # -- options --
         self.arch_opt = arch_opt
         self.gpu_stats = gpu_stats
         self.grad_sep_part1 = grad_sep_part1
+        self.nn_only = nn_only
 
         # -- matching batch normalization --
         self.match_bn = match_bn

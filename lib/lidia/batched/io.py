@@ -50,6 +50,9 @@ def load_model(cfg):
     bs_alpha = optional(cfg,'bs_alpha',0.5)
     idiv = optional(cfg,'idiv',False)
     rescale = optional(cfg,'rescale',True)
+    nn_recording = optional(cfg,'nn_recording',False)
+    nn_record_first_only = optional(cfg,'nn_record_first_only',False)
+    nn_timer = optional(cfg,'nn_timer',False)
     adapt_cfg = extract_adapt_config(cfg,optional)
     io_cfg = extract_io_config(cfg,optional)
     if init: return
@@ -67,7 +70,10 @@ def load_model(cfg):
                                remove_bn = remove_bn,
                                bs=bs,bs_te=bs_te,ws=ws,wt=wt,
                                bs_alpha=bs_alpha, idiv=idiv,
-                               rescale=rescale)
+                               rescale=rescale,
+                               nn_recording=nn_recording,
+                               nn_record_first_only = nn_record_first_only,
+                               use_nn_timer=nn_timer)
     nl_denoiser = nl_denoiser.to(device)
     nl_denoiser.cuda()
 
