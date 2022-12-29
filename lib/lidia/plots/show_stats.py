@@ -15,10 +15,12 @@ import matplotlib.pyplot as plt
 # -- save --
 from pathlib import Path
 SAVE_DIR = Path("./output/plots/show_stats")
-if not SAVE_DIR.exists():
-    SAVE_DIR.mkdir(parents=True)
 
 def create_stat_plots(records):
+
+    # -- mkdir --
+    if not SAVE_DIR.exists():
+        SAVE_DIR.mkdir(parents=True)
 
     # -- split successful records --
     df = records[records["failed"] ==0]
@@ -82,6 +84,10 @@ def plot_res_v_bs(ldf,bdf):
     ax.set_yticks(yticks)
     ax.set_yticklabels(yticklabels,fontsize=FSIZE_S)
 
+    # -- mkdir --
+    if not SAVE_DIR.exists():
+        SAVE_DIR.mkdir(parents=True)
+
     # -- save --
     ax.legend(fontsize=FSIZE_S,title_fontsize=FSIZE,title="Method")
     fname = SAVE_DIR / "show_stats_res_v_bs.png"
@@ -133,6 +139,10 @@ def plot_res_v_runtime(ldf,bdf):
     ax.set_xticklabels(xticklabels,fontsize=FSIZE_S)
     ax.set_yticks(yticks)
     ax.set_yticklabels(yticklabels,fontsize=FSIZE_S)
+
+    # -- mkdir --
+    if not SAVE_DIR.exists():
+        SAVE_DIR.mkdir(parents=True)
 
     # -- save --
     ax.legend(fontsize=FSIZE_S,title_fontsize=FSIZE,title="Method")
