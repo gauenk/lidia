@@ -113,13 +113,19 @@ class BatchedLIDIA(nn.Module):
                                    grad_sep_part1=self.grad_sep_part1,
                                    name=name)
 
+        # -- forward fxn --
+        self.chunk_fwd = self.forward
+
+        # -- init search --
+        self.init_search()
+
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     #
     #          Forward Pass
     #
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-    def forward(self, noisy, srch_img=None, flows=None, region=None):
+    def forward(self, _noisy, srch_img=None, flows=None, region=None):
 
         """
 
@@ -134,10 +140,10 @@ class BatchedLIDIA(nn.Module):
         # -=-=-=-=-=-=-=-=-=-=-=-
 
         # -- normalize for input ---
+        noisy = _noisy.clone()
         self.print_gpu_stats("Init")
-        if self.idiv: noisy = noisy/self.imax#255.
+        if self.idiv: noisy = noisy/self.imax
         if self.rescale: noisy = (noisy - 0.5)/0.5
-        # if rescale: noisy = (noisy/self.imax - 0.5)/0.5
         means = noisy.mean((-2,-1),True)
         noisy -= means
         if srch_img is None:
@@ -154,9 +160,6 @@ class BatchedLIDIA(nn.Module):
         batch_size = self.bs_te if self.training else self.bs
         batch_alpha = self.bs_alpha
         train = self.training
-
-        # -- no batch flows --
-        flows = flow.remove_batch(flows)
 
         # -- assign for match_bn check --
         self.pdn.nframes = noisy.shape[0]
@@ -214,6 +217,7 @@ class BatchedLIDIA(nn.Module):
         # -- Batching Info --
         if self.verbose: print("batch_size: ",batch_size)
         nqueries = t * ((hp-1)//stride+1) * ((wp-1)//stride+1)
+        # print(nqueries,t,hp,wp,vshape,stride,region)
         if batch_size <= 0: batch_size_step = nqueries
         else: batch_size_step = batch_size
         nbatches = (nqueries - 1)//batch_size_step+1
@@ -228,8 +232,12 @@ class BatchedLIDIA(nn.Module):
             qindex = min(batch * batch_size_step,nqueries)
             batch_size_i = min(batch_size_step,nqueries - qindex)
             # print("batch_size_i: ",batch_size_i)
-            queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
-                                                       stride,region,t,device)
+            if self.lidia_pad:
+                queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
+                                                           stride,region,t,device)
+            else:
+                queries = qindex
+
             th.cuda.synchronize()
             # print("qindex: ",qindex,batch_size_i,nqueries)
 
@@ -247,9 +255,7 @@ class BatchedLIDIA(nn.Module):
                     gpu_mem.peak_gpu_stats("pre-nn",reset=True)
                 timer.sync_start("search")
 
-
                 # -- Non-Local Search --
-
                 nn_info = params_l.nn_fxn(noisy,queries,pfxns_l.scatter,
                                           srch_img,flows,train,ws=ws,wt=wt)
 
@@ -287,7 +293,6 @@ class BatchedLIDIA(nn.Module):
             vid_z = vid / wvid
             assert_nonan(vid_z)
             levels[level]['vid'] = vid_z
-            del wvid
 
         # -=-=-=-=-=-=-=-=-=-=-=-
         #
@@ -313,8 +318,12 @@ class BatchedLIDIA(nn.Module):
 
             qindex = min(batch * batch_size_step,nqueries)
             batch_size_i = min(batch_size_step,nqueries - qindex)
-            queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
-                                                       stride,region,t,device)
+            if self.lidia_pad:
+                queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
+                                                           stride,region,t,device)
+            else:
+                queries = qindex
+
 
 
             #
@@ -356,14 +365,15 @@ class BatchedLIDIA(nn.Module):
         assert_nonan(deno)
 
         # -- Normalize for output ---
-        deno += means[region[0]:region[1]] # normalize
         noisy += means # restore
+        deno += means[region[0]:region[1]] # normalize
         if self.rescale:
             deno[...]  = deno  * 0.5 + 0.5 # normalize
             noisy[...] = noisy * 0.5 + 0.5 # restore
         if self.idiv:
             deno[...] = 255.*deno
             noisy[...] = 255.*noisy
+
         return deno
 
     def restore_vid(self,vid,means,rescale):
@@ -375,8 +385,10 @@ class BatchedLIDIA(nn.Module):
     def allocate_final(self,t,c,hp,wp):
         coords = [0,0,hp,wp]
         folds = edict()
-        folds.img = dnls.iFold((1,t,c,hp,wp),coords,stride=1,dilation=1)
-        folds.wimg = dnls.iFold((1,t,c,hp,wp),coords,stride=1,dilation=1)
+        folds.img = dnls.iFold((1,t,c,hp,wp),coords,stride=1,dilation=1,
+                               reflect_bounds=False)
+        folds.wimg = dnls.iFold((1,t,c,hp,wp),coords,stride=1,dilation=1,
+                                reflect_bounds=False)
         return folds
 
     def run_parts_final(self,image_dn,patch_weights,qindex,fold_nl,wfold_nl):
@@ -398,14 +410,17 @@ class BatchedLIDIA(nn.Module):
         wpatches = wpatches.contiguous()
 
         # -- dnls fold --
+        # print(image_dn.shape,fold_nl.vid.shape,fold_nl.coords)
         image_dn = fold_nl(image_dn[None,:],qindex)[0]
         patch_cnt = wfold_nl(wpatches[None,:],qindex)[0]
+
 
     def final_format(self,fold_nl,wfold_nl):
         # -- crop --
         pad = self.ps//2
         image_dn = fold_nl.vid[0]
         patch_cnt = wfold_nl.vid[0]
+        # image_dn = image_dn / (patch_cnt + 1e-10)
         image_dn = image_dn[:,:,pad:-pad,pad:-pad]
         image_dn /= (patch_cnt[:,:,pad:-pad,pad:-pad] + 1e-10)
         return image_dn

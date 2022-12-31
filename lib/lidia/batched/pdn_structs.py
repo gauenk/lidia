@@ -149,6 +149,19 @@ class PatchDenoiseNet(nn.Module):
         noise = self.sep_net.sep_part2(inputs)
         deno,patches_w = self.run_batched_pdn_final(patches_n0,noise)
 
+        # -- view --
+        # print(deno.shape)
+        # from dev_basics.utils import vid_io
+        # a = deno[0,:5].view(-1,3,5,5)
+        # print(a)
+        # vid_io.save_video(a*.5+.5,"output","patches_0")
+        # a = deno[0,-5:].view(-1,3,5,5)
+        # print(a)
+        # vid_io.save_video(a*.5+.5,"output","patches_1")
+        # a = deno[0,132*10+60:132*10+65].view(-1,3,5,5)
+        # print(a)
+        # vid_io.save_video(a*.5+.5,"output","patches_2")
+
         return deno,patches_w
 
     def reshape_bn(self,data):

@@ -99,7 +99,7 @@ def _pad_crop0_og(sel,image,pad_offs,train,ps):
 
 @register_method
 def pad_crop1(self, image, train, mode):
-    return self._pad_crop1(image, train, mode, self.patch_w)
+    return self._pad_crop1(image, train, mode, self.ps)
 
 @register_method
 def _pad_crop1(self, image, train, mode, patch_w):
@@ -176,7 +176,7 @@ def prepare_image_n1_og(self,image_n,train):
     The original version includes extra padding for differentiability
     """
     # -- pad & unpack --
-    patch_numel = (self.patch_w ** 2) * image_n.shape[1]
+    patch_numel = (self.ps ** 2) * image_n.shape[1]
     device = image_n.device
     image_n1 = self.pad_crop1(image_n, train, 'reflect')
 
