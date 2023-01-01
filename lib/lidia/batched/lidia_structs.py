@@ -74,7 +74,6 @@ class BatchedLIDIA(nn.Module):
         self.gpu_stats = False
         self.name = name
         self.verbose = verbose
-        self.times = {}
 
         self.ws = ws
         self.wt = wt
