@@ -6,6 +6,9 @@ Functions for internal domain adaptation.
 # -- misc --
 import sys,math,gc
 from .misc import get_default_config,crop_offset
+from dev_basics.utils import vid_io
+from dev_basics.utils.misc import rslice
+from dev_basics import flow
 
 # -- data structs --
 import torch.utils.data as data
@@ -36,7 +39,8 @@ register_method = clean_code.register_method(__methods__)
 
 @register_method
 def run_internal_adapt(self,_noisy,sigma,srch_img=None,flows=None,
-                       clean_gt=None,region_gt=None,verbose=False):
+                       clean_gt=None,region_gt=None,
+                       chunk_fwd=None,verbose=False):
     # -- unpack --
     p = rename_config(self.adapt_cfg)
 
@@ -60,9 +64,12 @@ def run_internal_adapt(self,_noisy,sigma,srch_img=None,flows=None,
     # -- run --
     for astep in range(p.nadapts):
         with th.no_grad():
-            clean_raw = self(noisy,_srch_img,flows=flows)
-            # clean_raw = self(noisy,flows=flows,srch_img=_srch_img,rescale=False)
+            if chunk_fwd is None:
+                clean_raw = self(noisy,_srch_img,flows=flows)
+            else:
+                clean_raw = chunk_fwd(noisy,flows=flows)
         clean = clean_raw.detach().clamp(-1, 1)
+        vid_io.save_video((clean*0.5+.5),"output/","clean_lidia")
         psnrs = adapt_step(self, clean, _srch_img, flows, opt,
                            nsteps = p.nsteps, nepochs = p.nepochs,
                            noise_sim = p.noise_sim,
@@ -70,7 +77,8 @@ def run_internal_adapt(self,_noisy,sigma,srch_img=None,flows=None,
                            sobel_nlevels = p.sobel_nlevels,
                            region_template = p.region_template,
                            noisy_gt = noisy,clean_gt = _clean_gt,
-                           region_gt = region_gt, verbose = verbose)
+                           region_gt = region_gt, verbose = verbose,
+                           chunk_fwd=chunk_fwd)
 
     # -- reset normalization --
     self.idiv = idiv
@@ -80,16 +88,17 @@ def run_internal_adapt(self,_noisy,sigma,srch_img=None,flows=None,
 
 @register_method
 def run_external_adapt(self,_noisy,_clean,sigma,srch_img=None,
-                       flows=None,verbose=False):
+                       flows=None,chunk_fwd=None,verbose=False):
 
     # -- unpack --
     p = rename_config(self.adapt_cfg)
-
     if verbose: print("Running External Adaptation.")
+
     # -- setup --
     opt = get_default_config(sigma)
     nadapts = 1
     clean = (_clean/255. - 0.5)/0.5
+
     # -- adapt --
     if not(srch_img is None):
         _srch_img = srch_img.contiguous()
@@ -98,7 +107,10 @@ def run_external_adapt(self,_noisy,_clean,sigma,srch_img=None,
 
     # -- eval before --
     # noisy = add_noise_to_image(clean, noise_sim, opt.sigma)
-    eval_nl(self,noisy,clean,_srch_img,flows,verbose)
+    if chunk_fwd is None:
+        eval_nl(self,noisy,clean,_srch_img,flows,verbose)
+    else:
+        eval_nl(chunk_fwd,noisy,clean,_srch_img,flows,verbose)
 
     for astep in range(nadapts):
         adapt_step(self, clean, _srch_img, flows, opt,
@@ -107,7 +119,7 @@ def run_external_adapt(self,_noisy,_clean,sigma,srch_img=None,
                    adapt_mtype = p.adapt_mtype,
                    sobel_nlevels = p.sobel_nlevels,
                    region_template=p.region_template,
-                   verbose=verbose)
+                   chunk_fwd=chunk_fwd,verbose=verbose)
 
 def rslice(vid,coords):
     if coords is None: return vid
@@ -125,12 +137,12 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
                nsteps=100, nepochs=5,
                noise_sim = None, sobel_nlevels = 3,
                adapt_mtype="default", region_template = "3_96_96",
-               noisy_gt=None,clean_gt=None,region_gt=None,verbose=False):
+               noisy_gt=None,clean_gt=None,region_gt=None,
+               chunk_fwd=None,verbose=False):
 
     # -- psnrs --
     psnrs = []
     if not(clean_gt is None):
-        print(clean.shape,clean_gt.shape)
         psnr0 = compute_psnr(clean,clean_gt)
         # print(psnr0)
         psnrs.append(psnr0)
@@ -167,12 +179,16 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
             # -- tenors on device --
             noisy_i = add_noise_to_image(clean,noise_sim,opt.sigma)
 
-            # -- forward pass --
+            # -- prepare forward pass --
             optim.zero_grad()
             nl_denoiser.train()
-            image_dn = nl_denoiser(noisy_i,srch_img=None,flows=flows,region=region)
-            # image_dn = nl_denoiser(noisy_i,flows=flows,srch_img=None,
-            #                        rescale=False,region=region)
+
+            # -- slice input --
+            noisy_i = rslice(noisy_i,region)
+            flows_i = flow.rslice(flows,region)
+
+            # -- forward pass --
+            image_dn = nl_denoiser(noisy_i,srch_img=None,flows=flows_i)
 
             # -- post-process images --
             image_dn = image_dn.clamp(-1,1)
@@ -194,11 +210,10 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
             if (i % 25 == 0) or (nsteps == i):
                 nl_denoiser.eval()
                 with th.no_grad():
-                    deno_gt = nl_denoiser(noisy_gt,srch_img=None,flows=flows,
-                                          region=region_gt)
-                    # deno_gt = nl_denoiser(noisy_gt,flows=flows,srch_img=None,
-                    #                       rescale=False,region=region_gt)
+                    noisy_gt_r = rslice(noisy_gt,region_gt)
                     clean_gt_r = rslice(clean_gt,region_gt)
+                    flows_i = flow.rslice(flows,region_gt)
+                    deno_gt = nl_denoiser(noisy_gt_r,srch_img=None,flows=flows_i)
                     psnr_gt = compute_psnr(deno_gt,clean_gt_r)
                     msg = "[%d/%d] Adaptation update: %2.3f"
                     print(msg % (i,nsteps,psnr_gt))
@@ -215,9 +230,10 @@ def adapt_step(nl_denoiser, clean, srch_img, flows, opt,
                 th.cuda.empty_cache()
                 nl_denoiser.eval()
                 with th.no_grad():
-                    deno = nl_denoiser(noisy,srch_img.clone(),flows)
-                    # deno = nl_denoiser(noisy,flows,srch_img.clone(),
-                    #                    rescale=False)
+                    if chunk_fwd is None:
+                        deno = nl_denoiser(noisy,srch_img.clone(),flows)
+                    else:
+                        deno = chunk_fwd(noisy,flows)
                 deno = deno.detach().clamp(-1, 1)
                 mse = criterion(deno / 2,clean / 2).item()
                 train_psnr = -10 * math.log10(mse)

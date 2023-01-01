@@ -38,7 +38,6 @@ class Aggregation0(nn.Module):
         # -- main logic --
         y_out = unfold(vid,qindex,bsize)
         y_out = rearrange(y_out,'n 1 pt c h w -> 1 n 1 (pt c h w)')
-
         return y_out
 
     def forward(self):
@@ -83,7 +82,6 @@ class Aggregation1(nn.Module):
         vid = self.bilinear_conv(vid).view(t,c,h,w)
         y_out = unfold(vid,qindex,bsize)
         y_out = rearrange(y_out,'n 1 pt c h w -> 1 n 1 (pt c h w)')
-
         return y_out
 
     def forward(self):

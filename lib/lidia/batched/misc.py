@@ -16,9 +16,11 @@ import dnls
 def get_step_fxns(vshape,coords,ps,stride,dilation,device):
     pt,dil = 1,dilation
     scatter = dnls.UnfoldK(ps,pt,dilation=dil,exact=True)
-    fold = dnls.iFold(vshape,coords,stride=stride,dilation=dil)
-    wfold = dnls.iFold(vshape,coords,stride=stride,dilation=dil)
-    unfold = dnls.iUnfold(ps,coords,stride=1,dilation=dil)
+    fold = dnls.iFold(vshape,coords,stride=stride,dilation=dil,
+                      reflect_bounds=False)
+    wfold = dnls.iFold(vshape,coords,stride=stride,dilation=dil,
+                       reflect_bounds=False)
+    unfold = dnls.iUnfold(ps,coords,stride=stride,dilation=dil)
     pfxns = edict()
     pfxns.scatter = scatter
     pfxns.fold = fold
