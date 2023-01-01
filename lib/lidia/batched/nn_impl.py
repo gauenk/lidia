@@ -28,7 +28,7 @@ from .misc import get_image_params,get_npatches
 @register_method
 def run_nn0(self,image_n,queryInds,scatter_nl,
             srch_img=None,flows=None,train=False,ws=29,wt=0,
-            neigh_pad = 14):
+            neigh_pad = 14,bsize=-1):
 
     #
     # -- Our Search --
@@ -84,7 +84,7 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
         qindex = queryInds
         self.update_search_flows(self.search0,img_nn0[None,:].shape,
                                  img_nn0.device,flows)
-        nlDists,nlInds = self.search0(img_nn0[None,:],qindex)
+        nlDists,nlInds = self.search0(img_nn0[None,:],qindex,bsize)
         nlDists = nlDists[0]
 
 
@@ -128,7 +128,7 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
 @register_method
 def run_nn1(self,image_n,queryInds,scatter_nl,
             srch_img=None,flows=None,train=False,ws=29,wt=0,
-            neigh_pad = 14, detach_search = True):
+            neigh_pad = 14, detach_search = True, bsize=-1):
 
     # -- unpack --
     t = image_n.shape[0]
@@ -191,7 +191,7 @@ def run_nn1(self,image_n,queryInds,scatter_nl,
         qindex = queryInds
         self.update_search_flows(self.search1,img_nn1[None,:].shape,
                                  img_nn1.device,flows)
-        nlDists,nlInds = self.search1(img_nn1[None,:],qindex)
+        nlDists,nlInds = self.search1(img_nn1[None,:],qindex,bsize)
         nlDists = nlDists[0]
 
     #

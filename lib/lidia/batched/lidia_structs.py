@@ -74,7 +74,6 @@ class BatchedLIDIA(nn.Module):
         self.gpu_stats = False
         self.name = name
         self.verbose = verbose
-        self.times = {}
 
         self.ws = ws
         self.wt = wt
@@ -257,7 +256,8 @@ class BatchedLIDIA(nn.Module):
 
                 # -- Non-Local Search --
                 nn_info = params_l.nn_fxn(noisy,queries,pfxns_l.scatter,
-                                          srch_img,flows,train,ws=ws,wt=wt)
+                                          srch_img,flows,train,ws=ws,wt=wt,
+                                          bsize=batch_size_i)
 
                 # -- recording nn gpu mem --
                 timer.sync_stop("search")
@@ -325,7 +325,6 @@ class BatchedLIDIA(nn.Module):
                 queries = qindex
 
 
-
             #
             # -- Non-Local Search @ Each Level --
             #
@@ -335,7 +334,7 @@ class BatchedLIDIA(nn.Module):
                 nn_fxn = levels[level]['nn_fxn']
                 scatter = pfxns[level].scatter
                 nn_info_l = nn_fxn(noisy,queries,scatter,srch_img,
-                                   flows,train,ws=ws,wt=wt)
+                                   flows,train,ws=ws,wt=wt,bsize=batch_size_i)
                 nn_info[level] = nn_info_l
 
             #

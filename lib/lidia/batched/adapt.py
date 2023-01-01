@@ -69,7 +69,7 @@ def run_internal_adapt(self,_noisy,sigma,srch_img=None,flows=None,
             else:
                 clean_raw = chunk_fwd(noisy,flows=flows)
         clean = clean_raw.detach().clamp(-1, 1)
-        vid_io.save_video((clean*0.5+.5),"output/","clean_lidia")
+        # vid_io.save_video((clean*0.5+.5),"output/","clean_lidia")
         psnrs = adapt_step(self, clean, _srch_img, flows, opt,
                            nsteps = p.nsteps, nepochs = p.nepochs,
                            noise_sim = p.noise_sim,
