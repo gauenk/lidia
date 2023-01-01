@@ -2,6 +2,7 @@
 # -- linalg --
 import torch as th
 from einops import rearrange,repeat
+from torch.nn.functional import pad as nn_pad
 
 # -- data mngmnt --
 from easydict import EasyDict as edict
@@ -62,21 +63,30 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
         img_nn0 = image_n0
     img_nn0 = img_nn0.detach()
 
-    # -- add padding --
-    queryInds[...,1] += sh
-    queryInds[...,2] += sw
-
     # -- search --
     k,ps,pt,chnls = 14,self.ps,1,1
-    # nlDists,nlInds = dnls.search.run(img_nn0,queryInds,flows,
-    #                                  k,ps,pt,ws,wt,chnls)
-    # print("img_nn0.shape: ",img_nn0.shape)
-    nlDists,nlInds = dnls.simple.search.run(img_nn0,queryInds,flows,
-                                            k,ps,pt,ws,wt,chnls)
+    if self.lidia_pad:
 
-    # -- remove padding --
-    queryInds[...,1] -= sh
-    queryInds[...,2] -= sw
+        # -- add padding --
+        queryInds[...,1] += sh
+        queryInds[...,2] += sw
+
+        nlDists,nlInds = dnls.simple.search.run(img_nn0,queryInds,flows,
+                                                k,ps,pt,ws,wt,chnls,
+                                                reflect_bounds=False)
+        nlInds = nlInds[None,:]
+
+        # -- remove padding --
+        queryInds[...,1] -= sh
+        queryInds[...,2] -= sw
+
+    else:
+        qindex = queryInds
+        self.update_search_flows(self.search0,img_nn0[None,:].shape,
+                                 img_nn0.device,flows)
+        nlDists,nlInds = self.search0(img_nn0[None,:],qindex)
+        nlDists = nlDists[0]
+
 
     #
     # -- Scatter Section --
@@ -84,25 +94,36 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
 
     # -- indexing patches --
     t,c,h,w = image_n0.shape
-    patches = scatter_nl(image_n0[None,:],nlInds[None,:])[0]
+    patches = scatter_nl(image_n0[None,:],nlInds)[0]
     ishape = 'p k 1 c h w -> 1 p k (c h w)'
     patches = rearrange(patches,ishape)
+
 
     # -- append anchor patch spatial variance --
     d = patches.shape[-1]
     pvar0 = patches[0,:,0,:].std(-1)**2*d # patch var
     nlDists = th.cat([nlDists[:,1:],pvar0[:,None]],-1)
 
-
     # -- remove padding --
     nlInds[...,1] -= sh
     nlInds[...,2] -= sw
+
+    # -- view --
+    # print(nlInds.shape)
+    # print(nlInds[-132*2-64,:])
+    # print(nlInds[-64,:])
+    # print(nlInds.shape)
+    # print(queryInds[-132*2-64,:])
+    # print(queryInds[-64,:])
+    # print(nlDists[-132*2-64,:])
+    # print(nlDists[-64,:])
 
     # -- pack up --
     info = edict()
     info.patches = patches
     info.dists = nlDists[None,:]
     return info
+
 
 @register_method
 def run_nn1(self,image_n,queryInds,scatter_nl,
@@ -146,29 +167,39 @@ def run_nn1(self,image_n,queryInds,scatter_nl,
 
     # -- inds offsets --
     t,c,h0,w0 = image_n1.shape
-    queryInds[...,1] += sh
-    queryInds[...,2] += sw
 
     # -- exec search --
     k,pt,chnls = 14,1,1
-    # nlDists,nlInds = dnls.search.run(img_nn1,queryInds,flows,
-    #                                  k,ps,pt,ws,wt,chnls,
-    #                                  stride=2,dilation=2)
-    # print("img_nn1.shape: ",img_nn1.shape)
-    nlDists,nlInds = dnls.simple.search.run(img_nn1,queryInds,flows,
-                                            k,ps,pt,ws,wt,chnls,
-                                            stride=2,dilation=2)
+    if self.lidia_pad:
+        # -- padding --
+        queryInds[...,1] += sh
+        queryInds[...,2] += sw
 
-    # -- remove padding --
-    queryInds[...,1] -= sh
-    queryInds[...,2] -= sw
+        # -- no batch flows --
+        flows = flow.remove_batch(flows)
+
+        # -- search --
+        nlDists,nlInds = dnls.simple.search.run(img_nn1,queryInds,flows,
+                                                k,ps,pt,ws,wt,chnls,
+                                                stride=2,dilation=2,
+                                                reflect_bounds=False)
+        # -- remove padding --
+        queryInds[...,1] -= sh
+        queryInds[...,2] -= sw
+
+    else:
+        qindex = queryInds
+        self.update_search_flows(self.search1,img_nn1[None,:].shape,
+                                 img_nn1.device,flows)
+        nlDists,nlInds = self.search1(img_nn1[None,:],qindex)
+        nlDists = nlDists[0]
 
     #
     # -- Scatter Section --
     #
 
     # -- dnls --
-    patches = scatter_nl(image_n1[None,:],nlInds[None,:])[0]
+    patches = scatter_nl(image_n1[None,:],nlInds)[0]
 
     #
     # -- Final Formatting --
@@ -194,3 +225,89 @@ def run_nn1(self,image_n,queryInds,scatter_nl,
     info.patches = patches
     info.dists = nlDists[None,:]
     return info
+
+
+@register_method
+def init_search(self):
+    self.init_search_nn0()
+    self.init_search_nn1()
+
+@register_method
+def init_search_nn0(self):
+    fflow,bflow = None,None
+    stride0 = 1
+    stride1 = 1
+    pt = 1
+    ps = self.ps
+    ws = self.ws
+    wt = self.wt
+    k = self.k
+    dil = 1
+    full_ws = False
+    use_k = True
+    exact = False
+    use_adj = False
+    reflect_bounds = False
+    search_abs = False
+    remove_self = False
+    rbwd,nbwd = False,1
+    self.search0 = dnls.search.init("l2_with_index",fflow, bflow, k,
+                                    ps, pt, ws, wt,chnls=-1,dilation=dil,
+                                    stride0=stride0,stride1=stride1,
+                                    reflect_bounds=reflect_bounds,
+                                    search_abs=search_abs,
+                                    use_k=use_k,use_adj=use_adj,
+                                    full_ws=full_ws,exact=exact,
+                                    remove_self=remove_self,
+                                    rbwd=rbwd,nbwd=nbwd)
+@register_method
+def init_search_nn1(self):
+    fflow,bflow = None,None
+    stride0 = 1
+    stride1 = 2
+    dil = 2
+    pt = 1
+    ps = self.ps
+    ws = self.ws
+    wt = self.wt
+    k = self.k
+    full_ws = False
+    use_k = True
+    exact = False
+    use_adj = False
+    reflect_bounds = False
+    search_abs = False
+    remove_self = False
+    rbwd,nbwd = False,1
+    self.search1 = dnls.search.init("l2_with_index",fflow, bflow, k,
+                                    ps, pt, ws, wt,chnls=-1,dilation=dil,
+                                    stride0=stride0,stride1=stride1,
+                                    reflect_bounds=reflect_bounds,
+                                    search_abs=search_abs,
+                                    use_k=use_k,use_adj=use_adj,
+                                    full_ws=full_ws,exact=exact,
+                                    remove_self=remove_self,
+                                    rbwd=rbwd,nbwd=nbwd)
+
+@register_method
+def update_search_flows(self,search,vshape,device,flows):
+    _flows = match_shape(vshape,flows)
+    search.update_flow(vshape,device,_flows)
+
+def match_shape(vshape,flows):
+    if flows is None: return None
+
+    # -- compute pad --
+    iH,iW = vshape[-2:]
+    fH,fW = flows.fflow.shape[-2:]
+    padH = (iH - fH)//2
+    padW = (iW - fW)//2
+    assert padH*2 == (iH - fH)
+    assert padW*2 == (iW - fW)
+
+    # -- pad --
+    _flows = edict()
+    _flows.fflow = nn_pad(flows.fflow,[padW,padW,padH,padH],mode='constant',value=0.)
+    _flows.bflow = nn_pad(flows.bflow,[padW,padW,padH,padH],mode='constant',value=0.)
+
+    return _flows
