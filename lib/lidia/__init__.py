@@ -12,6 +12,7 @@ from . import plots
 from . import configs
 from . import explore_configs
 from . import flow
+from . import lightning
 from .batched import extract_model_config
 
 # -- paper --
