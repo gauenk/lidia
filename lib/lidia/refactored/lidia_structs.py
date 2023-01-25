@@ -14,15 +14,20 @@ from torch.nn.functional import fold
 # -- diff. non-local search --
 import dnls
 
+# -- utils --
+from lidia.utils import clean_code
+from lidia.utils import gpu_mem
+
+# -- dev basics --
+from dev_basics import flow
+from dev_basics.utils.timer import ExpTimerList,ExpTimer
+from dev_basics.utils import clean_code
+
 # -- separate logic --
 from . import adapt
 from . import adapt_og
 from . import nn_impl
 from . import nn_impl_orig
-
-# -- utils --
-from lidia.utils import clean_code
-from lidia.utils import gpu_mem
 
 # -- misc imports --
 from .misc import crop_offset
@@ -55,6 +60,16 @@ class BaseLIDIA(nn.Module):
                                        kernel_size=(3, 3), bias=False)
         self.bilinear_conv.weight.data = kernel_2d
         self.bilinear_conv.weight.requires_grad = False
+        self.ws = 29
+        self.wt = 0
+        self.div = False
+        self.rescale = True
+        self.train = False
+        self.batch_size = None
+        self.batch_alpha = None
+        self.srch_img = None
+        self.use_timer = False
+        self.times = ExpTimerList(self.use_timer)
 
         self.pdn = PatchDenoiseNet(arch_opt=arch_opt,patch_w=self.patch_w,
                                    ver_size=self.ver_size,gpu_stats=self.gpu_stats)
@@ -65,9 +80,7 @@ class BaseLIDIA(nn.Module):
     #
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-    def forward(self, noisy, sigma, srch_img=None, flows=None,
-                ws=29, wt=0, rescale=True, train=False,
-                batch_size=None, batch_alpha = None):
+    def forward(self, noisy, flows=None):
         """
 
         Primary Network Backbone
@@ -80,8 +93,20 @@ class BaseLIDIA(nn.Module):
         # -- Prepare --
         #
 
+
+        # -- unpack --
+        div = self.div
+        rescale = self.rescale
+        train = self.train
+        batch_size = self.batch_size
+        batch_alpha = self.batch_alpha
+        srch_img = self.srch_img
+        ws,wt = self.ws,self.wt
+
         # -- normalize for input ---
-        if rescale: noisy = (noisy/255. - 0.5)/0.5
+        noisy = noisy.clone()
+        if div: noisy = noisy/255.
+        if rescale: noisy = (noisy - 0.5)/0.5
         means = noisy.mean((-2,-1),True)
         noisy -= means
         if srch_img is None: srch_img = noisy
@@ -145,8 +170,11 @@ class BaseLIDIA(nn.Module):
         deno += means # normalize
         noisy += means # restore
         if rescale:
-            deno[...]  = 255.*(deno  * 0.5 + 0.5) # normalize
-            noisy[...] = 255.*(noisy * 0.5 + 0.5) # restore
+            deno[...]  = (deno  * 0.5 + 0.5) # normalize
+            noisy[...] = (noisy * 0.5 + 0.5) # restore
+        if div:
+            deno[...]  = 255.*deno
+            noisy[...] = 255.*noisy
         return deno
 
     def run_parts_final(self,image_dn,patch_weights,inds,params):
@@ -283,7 +311,8 @@ class LIDIA(BaseLIDIA):
     def __init__(self, pad_offs, arch_opt, gpu_stats=False):
         super(LIDIA, self).__init__(pad_offs, arch_opt, gpu_stats)
 
-@clean_code.add_methods_from(adapt_og)
+# @clean_code.add_methods_from(adapt_og)
+@clean_code.add_methods_from(adapt)
 @clean_code.add_methods_from(nn_impl_orig)
 class OriginalLIDIA(BaseLIDIA):
     def __init__(self, pad_offs, arch_opt, gpu_stats=False):

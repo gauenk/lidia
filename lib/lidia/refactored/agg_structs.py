@@ -29,7 +29,7 @@ class Aggregation0(nn.Module):
         pad = ps//2
         _nlDists = rearrange(nlDists[:,:,0],'t p -> (t p) 1').clone()
         _nlInds = rearrange(nlInds[:,:,0],'t p thr -> (t p) 1 thr').clone()
-        ones = th.zeros_like(_nlDists)
+        ones = th.ones_like(_nlDists)
         _nlInds[...,1] += pad#(ps-1) - ps//2 # delta pads from 72 -> 68
         _nlInds[...,2] += pad#(ps-1) - ps//2
 
@@ -90,7 +90,8 @@ class Aggregation1(nn.Module):
 
         # -- gather --
         shape = (t,3,pixels_h,pixels_w)
-        zeros = th.zeros_like(_nlDists)
+        zeros = th.ones_like(_nlDists)
+        # print(x.shape,zeros.shape)
         x,wx = dnls.simple.fold_k.run(x,zeros,_nlInds,shape=shape,dilation=2)
         x = x / wx
         xg = x

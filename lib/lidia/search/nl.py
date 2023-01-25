@@ -37,7 +37,7 @@ class NLSearch():
 
     def __call__(self,vid,*args):
         B,T,C,H,W = vid.shape
-        dists,inds = self.search(vid)
+        dists,inds = self.search(vid,vid)
         return dists,inds
 
     def flops(self,B,C,H,W):
