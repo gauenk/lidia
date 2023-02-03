@@ -251,15 +251,15 @@ def init_search_nn0(self):
     search_abs = False
     remove_self = False
     rbwd,nbwd = False,1
-    self.search0 = dnls.search.init("l2_with_index",fflow, bflow, k,
-                                    ps, pt, ws, wt,chnls=-1,dilation=dil,
-                                    stride0=stride0,stride1=stride1,
-                                    reflect_bounds=reflect_bounds,
-                                    search_abs=search_abs,
-                                    use_k=use_k,use_adj=use_adj,
-                                    full_ws=full_ws,exact=exact,
-                                    remove_self=remove_self,
-                                    rbwd=rbwd,nbwd=nbwd)
+    self.search0 = dnls.search_dev.init("l2_with_index",fflow, bflow, k,
+                                        ps, pt, ws, wt,chnls=-1,dilation=dil,
+                                        stride0=stride0,stride1=stride1,
+                                        reflect_bounds=reflect_bounds,
+                                        search_abs=search_abs,
+                                        use_k=use_k,use_adj=use_adj,
+                                        full_ws=full_ws,exact=exact,
+                                        remove_self=remove_self,
+                                        rbwd=rbwd,nbwd=nbwd)
 @register_method
 def init_search_nn1(self):
     fflow,bflow = None,None
@@ -279,15 +279,15 @@ def init_search_nn1(self):
     search_abs = False
     remove_self = False
     rbwd,nbwd = False,1
-    self.search1 = dnls.search.init("l2_with_index",fflow, bflow, k,
-                                    ps, pt, ws, wt,chnls=-1,dilation=dil,
-                                    stride0=stride0,stride1=stride1,
-                                    reflect_bounds=reflect_bounds,
-                                    search_abs=search_abs,
-                                    use_k=use_k,use_adj=use_adj,
-                                    full_ws=full_ws,exact=exact,
-                                    remove_self=remove_self,
-                                    rbwd=rbwd,nbwd=nbwd)
+    self.search1 = dnls.search_dev.init("l2_with_index",fflow, bflow, k,
+                                        ps, pt, ws, wt,chnls=-1,dilation=dil,
+                                        stride0=stride0,stride1=stride1,
+                                        reflect_bounds=reflect_bounds,
+                                        search_abs=search_abs,
+                                        use_k=use_k,use_adj=use_adj,
+                                        full_ws=full_ws,exact=exact,
+                                        remove_self=remove_self,
+                                        rbwd=rbwd,nbwd=nbwd)
 
 @register_method
 def update_search_flows(self,search,vshape,device,flows):
