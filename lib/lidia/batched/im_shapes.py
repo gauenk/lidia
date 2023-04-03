@@ -8,7 +8,7 @@ import torch.nn.functional as nn_func
 from torch.nn.functional import pad as nn_pad
 
 # -- diff. non-local search --
-import dnls
+import stnls
 
 # -- separate class and logic --
 from lidia.utils import clean_code

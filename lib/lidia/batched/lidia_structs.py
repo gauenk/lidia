@@ -17,7 +17,7 @@ from torch.nn.functional import pad as nn_pad
 from torchvision.transforms.functional import center_crop
 
 # -- diff. non-local search --
-import dnls
+import stnls
 
 # -- separate logic --
 from . import adapt
@@ -232,7 +232,7 @@ class BatchedLIDIA(nn.Module):
             batch_size_i = min(batch_size_step,nqueries - qindex)
             # print("batch_size_i: ",batch_size_i)
             if self.lidia_pad:
-                queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
+                queries = stnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
                                                            stride,region,t,device)
             else:
                 queries = qindex
@@ -319,7 +319,7 @@ class BatchedLIDIA(nn.Module):
             qindex = min(batch * batch_size_step,nqueries)
             batch_size_i = min(batch_size_step,nqueries - qindex)
             if self.lidia_pad:
-                queries = dnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
+                queries = stnls.utils.inds.get_iquery_batch(qindex,batch_size_i,
                                                            stride,region,t,device)
             else:
                 queries = qindex
@@ -384,9 +384,9 @@ class BatchedLIDIA(nn.Module):
     def allocate_final(self,t,c,hp,wp):
         coords = [0,0,hp,wp]
         folds = edict()
-        folds.img = dnls.iFold((1,t,c,hp,wp),coords,stride=1,dilation=1,
+        folds.img = stnls.iFold((1,t,c,hp,wp),coords,stride=1,dilation=1,
                                reflect_bounds=False)
-        folds.wimg = dnls.iFold((1,t,c,hp,wp),coords,stride=1,dilation=1,
+        folds.wimg = stnls.iFold((1,t,c,hp,wp),coords,stride=1,dilation=1,
                                 reflect_bounds=False)
         return folds
 
@@ -408,7 +408,7 @@ class BatchedLIDIA(nn.Module):
         image_dn = image_dn.contiguous()
         wpatches = wpatches.contiguous()
 
-        # -- dnls fold --
+        # -- stnls fold --
         # print(image_dn.shape,fold_nl.vid.shape,fold_nl.coords)
         image_dn = fold_nl(image_dn[None,:],qindex)[0]
         patch_cnt = wfold_nl(wpatches[None,:],qindex)[0]

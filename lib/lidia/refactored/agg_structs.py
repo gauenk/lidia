@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as nn_func
 
 # -- differentiable non-local search --
-import dnls
+import stnls
 
 class Aggregation0(nn.Module):
     def __init__(self, patch_w):
@@ -39,16 +39,16 @@ class Aggregation0(nn.Module):
         shape = (t,3,hp,wp)
 
         # -- exec gather --
-        x,wx = dnls.simple.fold_k.run(x,ones,_nlInds,shape=shape)
+        x,wx = stnls.simple.fold_k.run(x,ones,_nlInds,shape=shape)
 
         # -- post process --
         x = x / wx
         xg = x
-        # dnls.testing.data.save_burst(xg,"./output/tests/","gt_agg0")
+        # stnls.testing.data.save_burst(xg,"./output/tests/","gt_agg0")
         # print(x[0,0,:5,:5])
 
         # -- scatter --
-        x = dnls.simple.unfold_k.run(x,_nlInds,ps,pt,dilation=1)
+        x = stnls.simple.unfold_k.run(x,_nlInds,ps,pt,dilation=1)
         x = rearrange(x,'(t p) 1 pt c h w -> t p 1 (pt c h w)',t=t)
 
         if both: return x,xg
@@ -92,7 +92,7 @@ class Aggregation1(nn.Module):
         shape = (t,3,pixels_h,pixels_w)
         zeros = th.ones_like(_nlDists)
         # print(x.shape,zeros.shape)
-        x,wx = dnls.simple.fold_k.run(x,zeros,_nlInds,shape=shape,dilation=2)
+        x,wx = stnls.simple.fold_k.run(x,zeros,_nlInds,shape=shape,dilation=2)
         x = x / wx
         xg = x
 
@@ -102,7 +102,7 @@ class Aggregation1(nn.Module):
         x = self.bilinear_conv(x).view(t,c,h,w)
 
         # -- scatter --
-        x = dnls.simple.unfold_k.run(x,_nlInds,ps,pt,dilation=2)
+        x = stnls.simple.unfold_k.run(x,_nlInds,ps,pt,dilation=2)
         x = rearrange(x,'(t p) 1 pt c h w -> t p 1 (pt c h w)',t=t)
 
         if both: return x,xg

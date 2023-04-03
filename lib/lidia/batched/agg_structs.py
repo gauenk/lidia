@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as nn_func
 
 # -- differentiable non-local search --
-import dnls
+import stnls
 
 class Aggregation0(nn.Module):
     def __init__(self, patch_w, name=""):

@@ -11,16 +11,16 @@ from easydict import EasyDict as edict
 import torchvision.transforms.functional as tvf
 
 # -- patch-based functions --
-import dnls
+import stnls
 
 def get_step_fxns(vshape,coords,ps,stride,dilation,device):
     pt,dil = 1,dilation
-    scatter = dnls.UnfoldK(ps,pt,dilation=dil,exact=True)
-    fold = dnls.iFold(vshape,coords,stride=stride,dilation=dil,
+    scatter = stnls.UnfoldK(ps,pt,dilation=dil,exact=True)
+    fold = stnls.iFold(vshape,coords,stride=stride,dilation=dil,
                       reflect_bounds=False)
-    wfold = dnls.iFold(vshape,coords,stride=stride,dilation=dil,
+    wfold = stnls.iFold(vshape,coords,stride=stride,dilation=dil,
                        reflect_bounds=False)
-    unfold = dnls.iUnfold(ps,coords,stride=stride,dilation=dil)
+    unfold = stnls.iUnfold(ps,coords,stride=stride,dilation=dil)
     pfxns = edict()
     pfxns.scatter = scatter
     pfxns.fold = fold

@@ -28,7 +28,7 @@ from einops import rearrange,repeat
 import data_hub
 
 # -- package imports [to test] --
-import dnls # supporting
+import stnls # supporting
 import lidia
 from lidia.utils.gpu_mem import print_gpu_stats,print_peak_gpu_stats
 from torchvision.transforms.functional import center_crop
@@ -223,11 +223,11 @@ def test_batched():
         deno_n4 = deno_n4.detach()/255.
 
         # -- save --
-        dnls.testing.data.save_burst(deno_n4,SAVE_DIR,"batched")
-        dnls.testing.data.save_burst(deno_steps,SAVE_DIR,"ref")
+        stnls.testing.data.save_burst(deno_n4,SAVE_DIR,"batched")
+        stnls.testing.data.save_burst(deno_steps,SAVE_DIR,"ref")
         diff = th.abs(deno_steps - deno_n4)
         diff /= diff.max()
-        dnls.testing.data.save_burst(diff,SAVE_DIR,"diff")
+        stnls.testing.data.save_burst(diff,SAVE_DIR,"diff")
 
         # -- test mse --
         error = th.mean((deno_n4 - deno_steps)**2).item()
@@ -323,12 +323,12 @@ def test_inset_deno():
         print_peak_gpu_stats(gpu_stats,"post-batched.")
 
         # -- save --
-        dnls.testing.data.save_burst(deno_n4,SAVE_DIR,"batched")
-        dnls.testing.data.save_burst(deno_b,SAVE_DIR,"ref")
+        stnls.testing.data.save_burst(deno_n4,SAVE_DIR,"batched")
+        stnls.testing.data.save_burst(deno_b,SAVE_DIR,"ref")
         diff = th.abs(deno_b - deno_n4)
         dmax = diff.max().item()
         diff /= diff.max()
-        dnls.testing.data.save_burst(diff,SAVE_DIR,"diff")
+        stnls.testing.data.save_burst(diff,SAVE_DIR,"diff")
 
         # -- test mse --
         error = th.sum((deno_n4 - deno_b)**2).item()
@@ -399,11 +399,11 @@ def test_internal_adapt():
     deno_n4b = deno_n4b.detach()/255.
 
     # -- save --
-    dnls.testing.data.save_burst(deno_n4,SAVE_DIR,"ref")
-    dnls.testing.data.save_burst(deno_n4b,SAVE_DIR,"batched")
+    stnls.testing.data.save_burst(deno_n4,SAVE_DIR,"ref")
+    stnls.testing.data.save_burst(deno_n4b,SAVE_DIR,"batched")
     diff = th.abs(deno_n4 - deno_n4b)
     diff /= diff.max()
-    dnls.testing.data.save_burst(diff,SAVE_DIR,"diff")
+    stnls.testing.data.save_burst(diff,SAVE_DIR,"diff")
 
     # -- psnrs --
     mse_n4 = th.mean((deno_n4 - clean_01)**2).item()

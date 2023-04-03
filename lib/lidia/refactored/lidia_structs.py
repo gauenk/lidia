@@ -12,7 +12,7 @@ import torch.nn.functional as nn_func
 from torch.nn.functional import fold
 
 # -- diff. non-local search --
-import dnls
+import stnls
 
 # -- utils --
 from lidia.utils import clean_code
@@ -212,8 +212,8 @@ class BaseLIDIA(nn.Module):
         # wpatches = rearrange(wpatches,'t (c h w) n -> (t n) 1 1 c h w',h=ps,w=ps)
 
         # # -- process --
-        # image_dn,_ = dnls.simple.gather.run(image_dn, zeros, inds, shape=shape)
-        # patch_cnt,_ = dnls.simple.gather.run(wpatches, zeros, inds, shape=shape)
+        # image_dn,_ = stnls.simple.gather.run(image_dn, zeros, inds, shape=shape)
+        # patch_cnt,_ = stnls.simple.gather.run(wpatches, zeros, inds, shape=shape)
 
         # -- crop --
         # print(params['patches_h'])
