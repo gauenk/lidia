@@ -13,10 +13,13 @@ import numpy as np
 # -- modules --
 from .modules import NonLocalDenoiser,ArchitectureOptions
 
-def load_model(sigma,rgb=True,device="cuda:0"):
+def load_model(cfg):#sigma,rgb=True,device="cuda:0"):
 
     # -- get cfg --
-    cfg = get_default_config(sigma)
+    sigma = cfg.sigma
+    rgb = True
+    device="cuda:0"
+    cfg = get_default_config(cfg.sigma)
     arch_opt = ArchitectureOptions(rgb=rgb, small_network=False)
     ps = 5 if rgb else 7
     pad_offs, _ = calc_padding(ps)#arch_opt)

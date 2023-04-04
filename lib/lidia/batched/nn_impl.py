@@ -84,7 +84,7 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
         qindex = queryInds
         self.update_search_flows(self.search0,img_nn0[None,:].shape,
                                  img_nn0.device,flows)
-        nlDists,nlInds = self.search0(img_nn0[None,:],qindex,bsize)
+        nlDists,nlInds = self.search0(img_nn0[None,:],img_nn0[None,:],qindex,bsize)
         nlDists = nlDists[0]
 
 
@@ -191,7 +191,7 @@ def run_nn1(self,image_n,queryInds,scatter_nl,
         qindex = queryInds
         self.update_search_flows(self.search1,img_nn1[None,:].shape,
                                  img_nn1.device,flows)
-        nlDists,nlInds = self.search1(img_nn1[None,:],qindex,bsize)
+        nlDists,nlInds = self.search1(img_nn1[None,:],img_nn1[None,:],qindex)#,bsize)
         nlDists = nlDists[0]
 
     #
@@ -251,7 +251,7 @@ def init_search_nn0(self):
     search_abs = False
     remove_self = False
     rbwd,nbwd = False,1
-    self.search0 = dnls.search.init("l2_with_index",fflow, bflow, k,
+    self.search0 = dnls.dev.search.init("l2_with_index",fflow, bflow, k,
                                     ps, pt, ws, wt,chnls=-1,dilation=dil,
                                     stride0=stride0,stride1=stride1,
                                     reflect_bounds=reflect_bounds,
@@ -279,7 +279,7 @@ def init_search_nn1(self):
     search_abs = False
     remove_self = False
     rbwd,nbwd = False,1
-    self.search1 = dnls.search.init("l2_with_index",fflow, bflow, k,
+    self.search1 = dnls.dev.search.init("l2_with_index",fflow, bflow, k,
                                     ps, pt, ws, wt,chnls=-1,dilation=dil,
                                     stride0=stride0,stride1=stride1,
                                     reflect_bounds=reflect_bounds,

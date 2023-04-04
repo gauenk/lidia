@@ -456,7 +456,7 @@ class NonLocalDenoiser(nn.Module):
         return image
 
     def forward(self, image_n, train=True, save_memory=False, max_chunk=None,
-                normalize=False):
+                normalize=False,flows=None):
         if normalize:
             image_n = (image_n/255. - 0.5)/0.5
 

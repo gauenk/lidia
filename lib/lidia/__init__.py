@@ -29,7 +29,7 @@ def load_model(cfg):
     mtype = optional(cfg,'model_type','batched')
     if mtype == "original":
         model = original.load_model(cfg)
-    elif mtype == "batched":
+    elif mtype in ["batched","augmented"]:
         model = batched.load_model(cfg)
     elif mtype == "refactored":
         model = refactored.load_model(cfg)

@@ -36,7 +36,7 @@ class Aggregation0(nn.Module):
     def batched_fwd_b(self, vid, qindex, bsize, unfold):
 
         # -- main logic --
-        y_out = unfold(vid,qindex,bsize)
+        y_out = unfold(vid[None,:],qindex,bsize)[0]
         y_out = rearrange(y_out,'n 1 pt c h w -> 1 n 1 (pt c h w)')
         return y_out
 
@@ -80,7 +80,7 @@ class Aggregation1(nn.Module):
         t,c,h,w = vid.shape
         vid = nn_func.pad(vid, [1] * 4, 'reflect').view(t*c,1,h+2,w+2)
         vid = self.bilinear_conv(vid).view(t,c,h,w)
-        y_out = unfold(vid,qindex,bsize)
+        y_out = unfold(vid[None,:],qindex,bsize)[0]
         y_out = rearrange(y_out,'n 1 pt c h w -> 1 n 1 (pt c h w)')
         return y_out
 
