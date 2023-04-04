@@ -1,4 +1,4 @@
-import dnls
+import stnls
 import torch as th
 import torch.nn as nn
 from einops import rearrange
@@ -15,7 +15,7 @@ def get_search(k,ps,ws,wt,stride0,stride1):
     nbwd = 1
     rbwd,exact = False,False
     chnls = 1
-    search = dnls.search.init("l2_with_index", fflow, bflow,
+    search = stnls.search.init("l2_with_index", fflow, bflow,
                               k, ps, pt, ws, wt, chnls=1,
                               dilation=dil, stride0=stride0,stride1=stride1,
                               h0_off=0,w0_off=0,h1_off=0,w1_off=0,
@@ -37,7 +37,7 @@ class NLSearch():
 
     def __call__(self,vid,*args):
         B,T,C,H,W = vid.shape
-        dists,inds = self.search(vid)
+        dists,inds = self.search(vid,vid)
         return dists,inds
 
     def flops(self,B,C,H,W):

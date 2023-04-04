@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as nn_func
 
 # -- differentiable non-local search --
-import dnls
+import stnls
 
 class Aggregation0(nn.Module):
     def __init__(self, patch_w):
@@ -29,7 +29,7 @@ class Aggregation0(nn.Module):
         pad = ps//2
         _nlDists = rearrange(nlDists[:,:,0],'t p -> (t p) 1').clone()
         _nlInds = rearrange(nlInds[:,:,0],'t p thr -> (t p) 1 thr').clone()
-        ones = th.zeros_like(_nlDists)
+        ones = th.ones_like(_nlDists)
         _nlInds[...,1] += pad#(ps-1) - ps//2 # delta pads from 72 -> 68
         _nlInds[...,2] += pad#(ps-1) - ps//2
 
@@ -39,16 +39,16 @@ class Aggregation0(nn.Module):
         shape = (t,3,hp,wp)
 
         # -- exec gather --
-        x,wx = dnls.simple.fold_k.run(x,ones,_nlInds,shape=shape)
+        x,wx = stnls.simple.fold_k.run(x,ones,_nlInds,shape=shape)
 
         # -- post process --
         x = x / wx
         xg = x
-        # dnls.testing.data.save_burst(xg,"./output/tests/","gt_agg0")
+        # stnls.testing.data.save_burst(xg,"./output/tests/","gt_agg0")
         # print(x[0,0,:5,:5])
 
         # -- scatter --
-        x = dnls.simple.unfold_k.run(x,_nlInds,ps,pt,dilation=1)
+        x = stnls.simple.unfold_k.run(x,_nlInds,ps,pt,dilation=1)
         x = rearrange(x,'(t p) 1 pt c h w -> t p 1 (pt c h w)',t=t)
 
         if both: return x,xg
@@ -90,8 +90,9 @@ class Aggregation1(nn.Module):
 
         # -- gather --
         shape = (t,3,pixels_h,pixels_w)
-        zeros = th.zeros_like(_nlDists)
-        x,wx = dnls.simple.fold_k.run(x,zeros,_nlInds,shape=shape,dilation=2)
+        zeros = th.ones_like(_nlDists)
+        # print(x.shape,zeros.shape)
+        x,wx = stnls.simple.fold_k.run(x,zeros,_nlInds,shape=shape,dilation=2)
         x = x / wx
         xg = x
 
@@ -101,7 +102,7 @@ class Aggregation1(nn.Module):
         x = self.bilinear_conv(x).view(t,c,h,w)
 
         # -- scatter --
-        x = dnls.simple.unfold_k.run(x,_nlInds,ps,pt,dilation=2)
+        x = stnls.simple.unfold_k.run(x,_nlInds,ps,pt,dilation=2)
         x = rearrange(x,'(t p) 1 pt c h w -> t p 1 (pt c h w)',t=t)
 
         if both: return x,xg

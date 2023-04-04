@@ -3,7 +3,7 @@ import torch as th
 from einops import rearrange,repeat
 
 # -- diff. non-local search --
-import dnls
+import stnls
 
 # -- separate class and logic --
 from lidia.utils import clean_code

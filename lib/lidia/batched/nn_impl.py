@@ -8,7 +8,7 @@ from torch.nn.functional import pad as nn_pad
 from easydict import EasyDict as edict
 
 # -- diff. non-local search --
-import dnls
+import stnls
 
 # -- separate class and logic --
 from lidia.utils import clean_code
@@ -71,7 +71,7 @@ def run_nn0(self,image_n,queryInds,scatter_nl,
         queryInds[...,1] += sh
         queryInds[...,2] += sw
 
-        nlDists,nlInds = dnls.simple.search.run(img_nn0,queryInds,flows,
+        nlDists,nlInds = stnls.simple.search.run(img_nn0,queryInds,flows,
                                                 k,ps,pt,ws,wt,chnls,
                                                 reflect_bounds=False)
         nlInds = nlInds[None,:]
@@ -179,7 +179,7 @@ def run_nn1(self,image_n,queryInds,scatter_nl,
         flows = flow.remove_batch(flows)
 
         # -- search --
-        nlDists,nlInds = dnls.simple.search.run(img_nn1,queryInds,flows,
+        nlDists,nlInds = stnls.simple.search.run(img_nn1,queryInds,flows,
                                                 k,ps,pt,ws,wt,chnls,
                                                 stride=2,dilation=2,
                                                 reflect_bounds=False)
@@ -192,13 +192,14 @@ def run_nn1(self,image_n,queryInds,scatter_nl,
         self.update_search_flows(self.search1,img_nn1[None,:].shape,
                                  img_nn1.device,flows)
         nlDists,nlInds = self.search1(img_nn1[None,:],img_nn1[None,:],qindex)#,bsize)
+        # nlDists,nlInds = self.search1(img_nn1[None,:],img_nn1[None,:],qindex,bsize)
         nlDists = nlDists[0]
 
     #
     # -- Scatter Section --
     #
 
-    # -- dnls --
+    # -- stnls --
     patches = scatter_nl(image_n1[None,:],nlInds)[0]
 
     #
@@ -251,15 +252,16 @@ def init_search_nn0(self):
     search_abs = False
     remove_self = False
     rbwd,nbwd = False,1
-    self.search0 = dnls.dev.search.init("l2_with_index",fflow, bflow, k,
-                                    ps, pt, ws, wt,chnls=-1,dilation=dil,
-                                    stride0=stride0,stride1=stride1,
-                                    reflect_bounds=reflect_bounds,
-                                    search_abs=search_abs,
-                                    use_k=use_k,use_adj=use_adj,
-                                    full_ws=full_ws,exact=exact,
-                                    remove_self=remove_self,
-                                    rbwd=rbwd,nbwd=nbwd)
+    self.search0 = stnls.search_dev.init("l2_with_index",fflow, bflow, k,
+                                        ps, pt, ws, wt,chnls=-1,dilation=dil,
+                                        stride0=stride0,stride1=stride1,
+                                        reflect_bounds=reflect_bounds,
+                                        search_abs=search_abs,
+                                        use_k=use_k,use_adj=use_adj,
+                                        full_ws=full_ws,exact=exact,
+                                        remove_self=remove_self,
+                                        rbwd=rbwd,nbwd=nbwd)
+
 @register_method
 def init_search_nn1(self):
     fflow,bflow = None,None
@@ -279,15 +281,15 @@ def init_search_nn1(self):
     search_abs = False
     remove_self = False
     rbwd,nbwd = False,1
-    self.search1 = dnls.dev.search.init("l2_with_index",fflow, bflow, k,
-                                    ps, pt, ws, wt,chnls=-1,dilation=dil,
-                                    stride0=stride0,stride1=stride1,
-                                    reflect_bounds=reflect_bounds,
-                                    search_abs=search_abs,
-                                    use_k=use_k,use_adj=use_adj,
-                                    full_ws=full_ws,exact=exact,
-                                    remove_self=remove_self,
-                                    rbwd=rbwd,nbwd=nbwd)
+    self.search1 = stnls.search_dev.init("l2_with_index",fflow, bflow, k,
+                                        ps, pt, ws, wt,chnls=-1,dilation=dil,
+                                        stride0=stride0,stride1=stride1,
+                                        reflect_bounds=reflect_bounds,
+                                        search_abs=search_abs,
+                                        use_k=use_k,use_adj=use_adj,
+                                        full_ws=full_ws,exact=exact,
+                                        remove_self=remove_self,
+                                        rbwd=rbwd,nbwd=nbwd)
 
 @register_method
 def update_search_flows(self,search,vshape,device,flows):

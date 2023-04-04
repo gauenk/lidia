@@ -4,7 +4,7 @@ import torch as th
 from einops import rearrange,repeat
 
 # -- diff. non-local search --
-import dnls
+import stnls
 
 # -- separate class and logic --
 from lidia.utils import clean_code
@@ -64,7 +64,7 @@ def run_nn0(self,image_n,srch_img=None,flows=None,train=False,ws=29,wt=0):
 
     # -- search --
     k,ps,pt,chnls = 14,self.patch_w,1,1
-    nlDists,nlInds = dnls.simple.search.run(img_nn0,queryInds,flows,
+    nlDists,nlInds = stnls.simple.search.run(img_nn0,queryInds,flows,
                                             k,ps,pt,ws,wt,chnls)
 
     #
@@ -73,7 +73,7 @@ def run_nn0(self,image_n,srch_img=None,flows=None,train=False,ws=29,wt=0):
 
     # -- indexing patches --
     t,c,h,w = image_n0.shape
-    patches = dnls.simple.scatter.run(image_n0,nlInds,self.patch_w)
+    patches = stnls.simple.scatter.run(image_n0,nlInds,self.patch_w)
     ishape = '(t p) k 1 c h w -> t p k (c h w)'
     patches = rearrange(patches,ishape,t=t)
 
@@ -134,7 +134,7 @@ def run_nn1(self,image_n,srch_img=None,flows=None,train=False,ws=29,wt=0):
 
     # -- exec search --
     k,pt,chnls = 14,1,1
-    nlDists,nlInds = dnls.simple.search.run(img_nn1,queryInds,flows,
+    nlDists,nlInds = stnls.simple.search.run(img_nn1,queryInds,flows,
                                             k,ps,pt,ws,wt,chnls,
                                             stride=2,dilation=2)
 
@@ -142,8 +142,8 @@ def run_nn1(self,image_n,srch_img=None,flows=None,train=False,ws=29,wt=0):
     # -- Scatter Section --
     #
 
-    # -- dnls --
-    patches = dnls.simple.scatter.run(image_n1,nlInds,ps,dilation=2)
+    # -- stnls --
+    patches = stnls.simple.scatter.run(image_n1,nlInds,ps,dilation=2)
 
     #
     # -- Final Formatting --

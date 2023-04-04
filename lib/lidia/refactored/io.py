@@ -15,9 +15,11 @@ from .lidia_structs import LIDIA,OriginalLIDIA,ArchitectureOptions
 # -- misc imports --
 from .misc import get_default_config,calc_padding,select_sigma
 
-def load_model(sigma,mtype="lidia"):
+def load_model(cfg):
 
     # -- get cfg --
+    mtype = "original"
+    sigma = cfg.sigma
     cfg = get_default_config(sigma)
     arch_cfg = ArchitectureOptions(True)
 
